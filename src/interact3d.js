@@ -162,7 +162,7 @@ function renderTipBody(f) {
   if (f.odSat > 0.3) notes.push('AL 闻到食物气味');
   if ((f.peakAversion || 0) > 0.35) notes.push('MB 记忆已写入：回避粘板');
   if (f.alSat > 0.3) notes.push('报警信息素 → 回避＋逃逸');
-  if (f.brain.rate('DAN_PPL1') > 1) notes.push('PPL1 多巴胺：惩罚信号发放中');
+  if (f.brain.rate('PPL1') > 1) notes.push('PPL1 多巴胺：惩罚信号发放中');
   tipBody.innerHTML =
     `<b>果蝇 #${f.id}</b> · ${MODE_CN[f.state] || f.state}` +
     (W.follow === f ? ' <span style="color:#6fd8a8">· 追踪中</span>' : '') + '<br>' +
