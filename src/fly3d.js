@@ -1816,7 +1816,7 @@ cv.addEventListener('pointermove', e => {
     const dx = e.clientX - lastMove.x, dy = e.clientY - lastMove.y;
     if (!dragging && Math.hypot(e.clientX - downP.x, e.clientY - downP.y) > 7) dragging = true;
     if (dragging) {
-      cam.theta -= dx * 0.007;
+      cam.theta += dx * 0.007;         // 拖动方向 = 画面移动方向（"抓住世界"的手感）
       cam.phi = clamp(cam.phi - dy * 0.007, 0.14, 1.45);
     }
   } else if (!pointers.size) {
