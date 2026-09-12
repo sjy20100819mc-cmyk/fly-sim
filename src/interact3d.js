@@ -14,6 +14,19 @@ function closeTipAndUnfollow() {
   hideTip();
   if (wasFollow) { W.follow = null; W.userZoom = false; hint('已退出追踪'); }
 }
+(() => {                                   // 🎯 追踪 / 停止追踪
+  const btn = document.getElementById('tipFollow');
+  if (!btn) return;
+  btn.addEventListener('pointerdown', e => { e.stopPropagation(); });
+  btn.addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    const f = W.tipFly;
+    if (!f) return;
+    if (W.follow === f) { W.follow = null; W.userZoom = false; }
+    else { W.follow = f; W.userZoom = true; W.followDist = 170; W.followEnter = 1.3; }
+    renderTipBody(f);
+  });
+})();
 (() => {
   const btn = document.getElementById('tipClose');
   if (!btn) return;
@@ -65,7 +78,7 @@ cv.addEventListener('pointermove', e => {
     p.x = e.clientX; p.y = e.clientY;
   } else if (pointers.size === 0) {
     /* 悬停（桌面/Apple Pencil）：显示果蝇状态 */
-    const f = pickFly(e.clientX, e.clientY);
+    const f = pickFly(e.clientX, e.clientY, 1.4);
     if (f) { W.inspect = f; if (!W.tipSticky) showTipAt(f, e.clientX, e.clientY, false); }
     else if (!W.tipSticky) hideTip();
   }
@@ -97,13 +110,13 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 
 function tapAt(cx, cy) {
-  const f = pickFly(cx, cy, 34);
+  /* 放置模式下要求点得更准（0.85×），否则跟随果蝇时容易点不到空地 */
+  const placing = (W.mode === 'food' || W.mode === 'trap' || W.mode === 'fly');
+  const f = pickFly(cx, cy, placing ? 0.85 : 1.5);
   if (f) {
     if (W.mode === 'erase') { f.onTrap = null; f.die('removed'); sparks(f.x, f.y, [255, 140, 160], 6); return; }
-    W.inspect = f; W.follow = f; W.userZoom = true;
-    W.followDist = 170; W.followEnter = 1.3;         // 平滑推到观察距离/俯角
+    W.inspect = f;                                   // 只弹信息框；追踪改成手动点面板按钮，避免误触带走镜头
     showTipAt(f, cx, cy, true);
-    hint(`追踪果蝇 #${f.id}（轻点空地取消追踪）`);
     return;
   }
   const s = screenToSim(cx, cy);
@@ -130,6 +143,14 @@ function showTipAt(f, cx, cy, sticky) {
   tipEl.style.top = clamp(cy + 14, 46, window.innerHeight - 152) + 'px';
   renderTipBody(f);
   tipEl.style.display = 'block';
+  syncFollowBtn();
+}
+function syncFollowBtn() {
+  const btn = document.getElementById('tipFollow');
+  if (!btn) return;
+  const on = !!(W.tipFly && W.follow === W.tipFly);
+  btn.textContent = on ? '⏹ 停止追踪' : '🎯 追踪这只';
+  btn.classList.toggle('on', on);
 }
 function renderTipBody(f) {
   const hunger = clamp(1 - f.energy / CFG.fly.hungryAt, 0, 1);
@@ -150,6 +171,7 @@ function renderTipBody(f) {
     `读出 MN9 ${f.brain.rate('MN_feed').toFixed(1)} · MN_walk ${f.brain.rate('MN_walk').toFixed(1)} · GF ${f.brain.rate('DN_escape').toFixed(1)} Hz<br>` +
     (top.length ? `<span style="color:#9fe8c8">活跃：${top.map(t => t[0] + ' ' + t[1].toFixed(0) + 'Hz').join('、')}</span><br>` : '') +
     (notes.length ? `<span style="color:#ffd479">${notes.join('；')}</span>` : '');
+  syncFollowBtn();
 }
 function hideTip() {
   if (tipEl) tipEl.style.display = 'none';

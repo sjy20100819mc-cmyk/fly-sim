@@ -537,18 +537,30 @@ function screenToSim(px, py) {
   if (!raycaster.ray.intersectPlane(plane, hit)) return null;
   return { x: clamp(hit.x + ARENA / 2, 0, ARENA), y: clamp(hit.z + ARENA / 2, 0, ARENA) };
 }
-/* 最近的果蝇（屏幕空间距离） */
-function pickFly(px, py) {
-  const r = cv.getBoundingClientRect();
-  let best = null, bd = 52;
+/* 最近的果蝇：判定半径随"它在屏幕上的实际大小"自适应
+   —— 远景约 11px（要精确点到），跟随/放大时自动放宽到果蝇那么大 */
+const _pv = new THREE.Vector3();
+function flyScreenInfo(f) {
+  const rc = cv.getBoundingClientRect();
+  const [wx, wz] = px2world(f.x, f.y);
+  _pv.set(wx, 4, wz);
+  const dist = camera.position.distanceTo(_pv);
+  const pxPerUnit = rc.height / (2 * Math.max(1, dist) * Math.tan(camera.fov * Math.PI / 360));
+  _pv.project(camera);
+  return {
+    sx: (_pv.x * 0.5 + 0.5) * rc.width + rc.left,
+    sy: (-_pv.y * 0.5 + 0.5) * rc.height + rc.top,
+    rad: Math.max(11, pxPerUnit * 15)          // 果蝇体半宽约 15 世界单位
+  };
+}
+function pickFly(px, py, grab) {
+  let best = null, bd = 1e9;
   for (const f of W.flies) {
     if (f.dead) continue;
-    const [wx, wz] = px2world(f.x, f.y);
-    _vC.set(wx, 4, wz).project(camera);
-    const sx = (_vC.x * 0.5 + 0.5) * r.width + r.left;
-    const sy = (-_vC.y * 0.5 + 0.5) * r.height + r.top;
-    const d = Math.hypot(sx - px, sy - py);
-    if (d < bd) { bd = d; best = f; }
+    const info = flyScreenInfo(f);
+    const d = Math.hypot(info.sx - px, info.sy - py);
+    const rad = info.rad * (grab || 1);
+    if (d < rad && d < bd) { bd = d; best = f; }
   }
   return best;
 }

@@ -1540,7 +1540,7 @@ cv.addEventListener('pointerdown', e => {
   down = true;
   const p = pos(e); lastP = p;
   const hitF = (() => {                       // 轻点必须精确（16px），避免挡住放置
-    let best = null, bd = 16;
+    let best = null, bd = 12;
     for (const f of W.flies) { if (f.dead) continue;
       const d = Math.hypot(f.x - p.x, f.y - p.y); if (d < bd) { bd = d; best = f; } }
     return best;
@@ -1570,7 +1570,7 @@ cv.addEventListener('pointerleave', () => { down = false; if (!W.tipSticky) { W.
 const tipEl = document.getElementById('tip');
 const tipBody = document.getElementById('tipBody');
 function nearestFly(x, y) {
-  let best = null, bd = 24;
+  let best = null, bd = 17;
   for (const f of W.flies) {
     if (f.dead) continue;
     const d = Math.hypot(f.x - x, f.y - y);
