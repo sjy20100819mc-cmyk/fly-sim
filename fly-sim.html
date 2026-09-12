@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>果蝇自主行为模拟器 · FlyWire FAFB v783 连接组约简脉冲脑</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#080c10;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;color:#dfe7ee}
+  #cv{position:absolute;inset:0;display:block;touch-action:none;cursor:crosshair}
+
+  #bar{position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;gap:6px;
+    padding:7px;background:linear-gradient(#0b1117f2,#0b1117cc 70%,#0b111700);z-index:5}
+  .grp{display:flex;gap:6px;flex-wrap:wrap}
+  .grp:last-child{margin-left:auto}
+  button{appearance:none;border:1px solid #26323d;background:#121a22;color:#c8d6e2;
+    font-size:12.5px;padding:8px 11px;border-radius:9px;font-family:inherit;line-height:1;
+    transition:.14s;white-space:nowrap}
+  button:active{transform:scale(.95)}
+  button.on{background:#1d6b52;border-color:#2ea67c;color:#d8fff0;box-shadow:0 0 0 1px #2ea67c inset}
+  button.warn.on{background:#7a3a12;border-color:#e08b3a;color:#ffe6c8;box-shadow:0 0 0 1px #e08b3a inset}
+  button.flym.on{background:#3a2a6b;border-color:#8f7ce0;color:#e8e0ff;box-shadow:0 0 0 1px #8f7ce0 inset}
+  button.erase.on{background:#5a2030;border-color:#d9556f;color:#ffdfe5;box-shadow:0 0 0 1px #d9556f inset}
+  button.brain.on{background:#123f52;border-color:#3fb6d8;color:#d8f6ff;box-shadow:0 0 0 1px #3fb6d8 inset}
+
+  #stats{position:absolute;left:7px;bottom:7px;z-index:5;background:#0b1117d9;
+    border:1px solid #1d2833;border-radius:11px;padding:8px 10px;font-size:11.5px;
+    line-height:1.65;backdrop-filter:blur(6px);max-width:min(300px,74vw)}
+  #stats b{color:#fff;font-weight:600}
+  #stats .k{color:#7e8fa0}
+  #stats .hi{color:#ffd479}
+  #stats .bad{color:#ff8fa3}
+  #stats .ok{color:#6fe0b0}
+  body.brainon #stats{display:none}
+  #brainwrap{position:absolute;right:6px;bottom:6px;z-index:4;display:none}
+  #braincv{display:block;border-radius:12px;box-shadow:0 8px 30px #000a}
+  #brainlegend{position:absolute;left:10px;right:10px;bottom:6px;font-size:9.5px;color:#7e8fa0;
+    line-height:1.4;pointer-events:none}
+
+  #panel{position:absolute;right:7px;top:52px;bottom:7px;width:min(320px,88vw);z-index:6;
+    background:#0b1117f7;border:1px solid #1d2833;border-radius:12px;padding:10px;
+    overflow-y:auto;display:none;backdrop-filter:blur(8px);-webkit-overflow-scrolling:touch}
+  #panel.show{display:block}
+  #panel h3{margin:2px 0 8px;font-size:12px;color:#8fa5b8;font-weight:600;letter-spacing:.4px}
+  .row{margin-bottom:9px}
+  .row label{display:flex;justify-content:space-between;font-size:11px;color:#9fb0c0;margin-bottom:3px;gap:8px}
+  .row label span{color:#ffd479;font-variant-numeric:tabular-nums;white-space:nowrap}
+  input[type=range]{width:100%;height:20px;background:transparent;-webkit-appearance:none}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;background:#233240;border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
+    border-radius:50%;background:#4bd39c;border:2px solid #0b1117}
+  .mini{font-size:10.5px;color:#67788a;line-height:1.55;margin:8px 0 2px}
+  hr{border:0;border-top:1px solid #1b2632;margin:10px 0}
+
+  #tip{position:absolute;z-index:7;pointer-events:none;background:#0b1117f2;border:1px solid #2b3a48;
+    border-radius:9px;padding:6px 8px;font-size:10.5px;line-height:1.55;color:#cfdae4;display:none;
+    max-width:220px}
+  #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;z-index:4;font-size:11px;
+    color:#5f7284;text-align:center;pointer-events:none;transition:opacity .6s;opacity:.85;max-width:88vw}
+  body.brainon #hint{display:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<header id="bar">
+  <div class="grp">
+    <button data-mode="food" class="on">🍎 食物</button>
+    <button data-mode="trap" class="warn">🟨 粘板</button>
+    <button data-mode="fly" class="flym">🪰 投蝇</button>
+    <button data-mode="erase" class="erase">🧽 清除</button>
+  </div>
+  <div class="grp">
+    <button id="btnBrain" class="brain">🧠 脑活动</button>
+    <button id="btnField">👃 气味场</button>
+    <button id="btnPause">⏸ 暂停</button>
+    <button id="btnParam">⚙︎ 参数</button>
+    <button id="btnReset">↺ 重置</button>
+  </div>
+</header>
+
+<div id="stats"></div>
+<div id="brainwrap"><canvas id="braincv"></canvas>
+  <div id="brainlegend">节点=神经元（绿=兴奋/胆碱能，红=抑制/GABA·谷氨酸），亮度=放电率；
+    加粗的红/蓝线=已被多巴胺可塑性增强的 KC→MBON 突触（红=学会的危险）</div>
+</div>
+<aside id="panel">
+  <h3>参数调节（实时生效）</h3>
+  <div id="sliders"></div>
+  <hr>
+  <div class="mini">
+    <b>行为内核</b>：每只果蝇一副 66 神经元的 LIF 脉冲网络，细胞类型取自 FlyWire FAFB v783 注释，
+    突触权重 w_syn=0.275、全局 gain≈0.42、≥5 突触才建边（与 flybench / Shiu 2024 口径一致）。
+    中枢脑（MB 蘑菇体 / LH 侧角 / CX 中央复合体 / SEZ）决定动机与价值，导航反射由 VNC 局部回路补全。<br><br>
+    快捷键：1食物 2粘板 3投蝇 4清除 · B脑活动 · D气味场 · 空格暂停 · R重置
+  </div>
+</aside>
+<div id="tip"></div>
+<div id="hint">放置食物与粘板，观察果蝇自主决策（“脑活动”可看它此刻在想什么）</div>
+
+<script>
+/* ============================================================================
+   果蝇自主行为模拟器 v2  ·  Drosophila Autonomous Behavior Sim
+   ── 行为内核：连接组约简的脉冲神经网络（connectome-reduced spiking brain）
+   ─────────────────────────────────────────────────────────────────────────
+   【数据与模型出处】最新一代开源果蝇全脑工作（2024 连接组 → 2026 全脑仿真栈）
+     1. FlyWire FAFB v783 (Codex) —— 成虫全脑连接组：139,255 神经元 / 2.7–3.7M 边
+        Dorkenwald, Matsliah, Sterling et al., Nature 634:124-138 (2024)
+        建边规则：Princeton-filtered，突触数 ≥5 才算一条边（本作沿用该规则）
+     2. philshiu/Drosophila_brain_model —— 首个全脑 LIF 模型（Brian2）
+        Shiu et al., "A Drosophila computational brain model reveals sensorimotor
+        processing", Nature (2024)
+     3. Neuromorphicism/fly-brain-snntorch —— snnTorch 稀疏实现，糖/嗅觉/视觉/听觉刺激实验
+     4. snedea/flybrain —— 浏览器端 139K LIF 实时仿真（神经元按 Sensory/Central/
+        Drives/Motor 分组读出）—— 本作的分组与"由放电率读出行为"即沿用此范式
+     5. brandoncho369/flybench (2026) —— 全脑仿真的反射基准套件：静默→静默(基线
+        <0.5 Hz)、糖→MN9 喙伸展(>5 Hz)、苦味抑制糖反应、突现→巨纤维逃逸、
+        全局 gain≈0.40–0.45 才全部通过。本作的 gain / w_syn / 突触阈值即取此口径。
+     6. NeLy-EPFL/flygym (NeuroMechFly v2) —— 具身感觉运动闭环（本作的导航反射层）
+
+   【本作如何"用"这个模型】手机浏览器跑不动 13.9 万神经元 × 每只果蝇。
+   所以做"连接组约简"：保留 FAFB v783 中行为关键回路的**细胞类型、递质符号与
+   接线逻辑**，每只果蝇一个 70 神经元的 LIF 脉冲网（cuLIF，τm=20ms，τsyn=5ms，
+   2ms 不应期，权重 w = w_syn·gain·K·(突触数/5)，w_syn=0.275，gain 可调 0.4 上下）。
+   中枢脑（MB/LH/CX/SEZ）负责动机与价值，导航反射（气味梯度、casting、避障）
+   由 VNC 局部回路完成 —— 与"DN 下达指令 + VNC 局部控制环"的组织方式一致。
+
+   【回路映射】刺激 → 感觉神经元 → 中枢 → 下行神经元(DN) → 运动神经元读出 → 行为
+     · 嗅觉： ORN_food/ORN_ferm → PN → LHON → DN_walk       (趋源 / 上风冲刺)
+                              PN → KC → MBON_app/av          (蘑菇体价值输出)
+     · 惩罚： ORN_alarm / 粘板接触 → DAN_PPL1 → MBON_av 权重↑ (PPL1→MB 厌恶性学习)
+     · 奖赏： GRN_sugar → DAN_PAM → MBON_app 权重↑            (PAM→MB 食欲性学习)
+     · 饥饿： Hugin(SEZ) → LHON↑ / MN_walk↑ / MBON_av 抑制    (饿则冒险觅食)
+     · 饱足： FB_energy(扇形体) → 抑制 MN_feed                (饱则停止取食)
+     · 警觉： 报警信息素(被粘同伴释放) → ORN_alarm → 回避 + 逃逸
+     · 逃逸： 突现(looming)/机械冲击 → DN_escape(巨纤维) → 爆发逃逸
+     · 中央复合体：ring_EB → PFN → 转向运动神经元 (航向与转弯)
+     · 产卵： 摄食积累(蛋白) + 能量 → MN_oviposit
+   ========================================================================== */
+'use strict';
+
+/* ----------------------------- 工具函数 ----------------------------- */
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rand = (a, b) => a + Math.random() * (b - a);
+const randn = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
+const TAU = Math.PI * 2;
+function angDiff(a, b) {
+  let d = (a - b) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return d;
+}
+function rectDist(x, y, t) {                 // 点到粘板矩形的距离（0 = 贴在表面）
+  const dx = Math.max(t.x - x, 0, x - (t.x + CFG.trap.w));
+  const dy = Math.max(t.y - y, 0, y - (t.y + CFG.trap.h));
+  return Math.hypot(dx, dy);
+}
+function getPath(o, p) { return p.split('.').reduce((a, k) => a[k], o); }
+function setPath(o, p, v) { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; }
+
+/* ----------------------------- 全局参数 ----------------------------- */
+const CFG = {
+  env: {
+    cell: 20, odorTau: 3.4, odorDiff: 0.20,
+    fermTau: 4.2, fermDiff: 0.22,
+    alarmTau: 2.8, alarmDiff: 0.11,
+    senseThresh: 0.035, visionRange: 96
+  },
+  food: { r: 15, emit: 5.2, feedRate: 30, feedRange: 4, odorSens: 0.9 },
+  trap: { w: 52, h: 34, emit: 2.3, learnR: 52, nearR: 74, avoidR: 90, avoidGain: 3.4, usR: 32, capture: 0.8, bounce: 0.35 },
+  pher: { emit: 2.0, emitR: 20, interval: 0.28, emitDur: 20, escape: 0.03, drain: 2.2 },
+  /* ---- 脑（LIF 网络）参数：与 flybench/Shiu2024 口径一致 ---- */
+  brain: {
+    dt: 0.01,          // 仿真步长(s) 10ms
+    stepsPerFrame: 2,  // 每帧最多推进的脑步数
+    wSyn: 0.275,       // 单突触权重基准 (mV)，flybench 默认值
+    gain: 0.42,        // 全局增益：flybench 实测 0.40–0.45 才能通过全部反射
+    K: 5,              // 单位换算常数：w = w_syn·gain·K·(每对突触数)，标定到 vThr=1
+    adapt: 0.12,       // 放电频率适应强度（钙激活钾电流类比）
+    tauAdapt: 0.10,    // 适应电流时间常数 (s)
+    synMin: 5,         // 建边阈值：突触数 <5 的边丢弃（FAFB v783 惯例）
+    tauM: 0.020,       // 膜时间常数 (s)
+    tauSyn: 0.005,     // 突触电流衰减 (s)
+    tauR: 0.20,        // 放电率估计低通 (s)：r 直接读出 Hz
+    vThr: 1.0, vReset: 0.0, vRefrac: 0.002,
+    noise: 0.028,      // 自发/噪声驱动（静默时脑仍有个别神经元活动）
+    lr: 0.15,          // 多巴胺依赖可塑性学习率 (DAN→MB)
+    extinct: 0.5,      // 消退系数：闻到气味但没有惩罚时，记忆缓慢消退
+    daThresh: 3.0,     // 多巴胺门控阈值(Hz)：只有惩罚/奖赏引起的 DA 发放才写入记忆
+    wMax: 3.2,         // 突触权重上限（相对基准的倍数）
+    plasticTau: 0.35   // KC 资格迹时间常数(s)
+  },
+  fly: {
+    cruise: 58, surge: 132, turnRate: 5.0, noise: 2.4, cast: 5.2, size: 1.0,
+    eMax: 145, eStart: 115, drainBase: 0.95, drainMove: 0.60,
+    hungryAt: 62, desperateAt: 26,
+    seekGain: 1.7, fermentGain: 1.2, alarmGain: 1.15,
+    forgetTau: 40, memMax: 5,
+    reproChance: 0.16, reproCost: 30, reproEnergy: 102, feedNeed: 4, reproCool: 24,
+    eggTime: 13, lifespan: 165, wallPad: 34, mutate: 0.10,
+    /* 运动神经元 → 行为 的读出阈值 */
+    walkGain: 1.0,     // MN_walk 放电率 → 速度
+    feedThr: 6,        // MN_feed 放电率(Hz) 超过则伸展口器取食
+    steerGain: 18,     // MN_steer 差 → 转向偏好 (rad/s per Hz)
+    escapeThr: 20,     // DN_escape 放电率(Hz) 触发逃逸
+    ovipThr: 8         // MN_oviposit 放电率(Hz) 触发产卵
+  },
+  pop: { start: 16, max: 90 },
+  view: { showField: false, showBrain: false }
+};
+
+/* ----------------------------- 世界状态 ----------------------------- */
+const W = {
+  w: 0, h: 0, cols: 0, rows: 0,
+  foods: [], traps: [], eggs: [], corpses: [], flies: [],
+  time: 0, deaths: 0, births: 0, deathsByCause: {},
+  paused: false, showField: false, showBrain: false, mode: 'food'
+};
+
+/* ----------------------------- 气味场 ----------------------------- */
+class Field {
+  constructor(cols, rows, tau, diff, color) {
+    this.cols = cols; this.rows = rows; this.tau = tau; this.k = diff; this.color = color;
+    this.cur = new Float32Array(cols * rows);
+    this.nxt = new Float32Array(cols * rows);
+    this.max = 1;
+    this.cv = document.createElement('canvas');
+    this.cv.width = cols; this.cv.height = rows;
+    this.cx = this.cv.getContext('2d');
+    this.img = this.cx.createImageData(cols, rows);
+  }
+  deposit(x, y, amt, rad) {
+    const cs = CFG.env.cell;
+    const cx = Math.floor(x / cs), cy = Math.floor(y / cs);
+    const r = Math.max(1, Math.round(rad / cs));
+    for (let j = -r; j <= r; j++) {
+      const gy = cy + j; if (gy < 0 || gy >= this.rows) continue;
+      for (let i = -r; i <= r; i++) {
+        const gx = cx + i; if (gx < 0 || gx >= this.cols) continue;
+        const d = Math.sqrt(i * i + j * j); if (d > r) continue;
+        this.cur[gy * this.cols + gx] += amt * (1 - d / (r + 1));
+      }
+    }
+  }
+  step(dt) {
+    const { cols, rows, cur, nxt, k } = this;
+    for (let y = 0; y < rows; y++) {
+      const row = y * cols;
+      for (let x = 0; x < cols; x++) {
+        const i = row + x;
+        const l = cur[x > 0 ? i - 1 : i], r = cur[x < cols - 1 ? i + 1 : i];
+        const u = cur[y > 0 ? i - cols : i], d = cur[y < rows - 1 ? i + cols : i];
+        nxt[i] = cur[i] * (1 - k) + (l + r + u + d) * 0.25 * k;
+      }
+    }
+    const dec = Math.exp(-dt / this.tau);
+    let mx = 1e-6;
+    for (let i = 0; i < cur.length; i++) {
+      const v = nxt[i] * dec;
+      cur[i] = v < 1e-5 ? 0 : v;
+      if (cur[i] > mx) mx = cur[i];
+    }
+    this.max = this.max * 0.9 + mx * 0.1;
+  }
+  at(x, y) {
+    const cs = CFG.env.cell;
+    const cx = clamp(Math.floor(x / cs), 0, this.cols - 1);
+    const cy = clamp(Math.floor(y / cs), 0, this.rows - 1);
+    return this.cur[cy * this.cols + cx];
+  }
+  grad(x, y) {
+    const cs = CFG.env.cell, h = 1;
+    return [(this.at(x + cs * h, y) - this.at(x - cs * h, y)) / (2 * cs * h),
+    (this.at(x, y + cs * h) - this.at(x, y - cs * h)) / (2 * cs * h)];
+  }
+  render(ctx) {
+    const d = this.img.data, mx = Math.max(this.max, 0.35), [r, g, b] = this.color;
+    for (let i = 0; i < this.cur.length; i++) {
+      const t = clamp(this.cur[i] / mx, 0, 1);
+      const a = t === 0 ? 0 : Math.pow(t, 0.65) * 230;
+      const o = i * 4;
+      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a;
+    }
+    this.cx.putImageData(this.img, 0, 0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.cv, 0, 0, W.w, W.h);
+    ctx.restore();
+  }
+}
+let fFood, fFerm, fAlarm;
+function buildFields() {
+  const cs = CFG.env.cell;
+  W.cols = Math.max(1, Math.ceil(W.w / cs));
+  W.rows = Math.max(1, Math.ceil(W.h / cs));
+  fFood = new Field(W.cols, W.rows, CFG.env.odorTau, CFG.env.odorDiff, [255, 168, 74]);
+  fFerm = new Field(W.cols, W.rows, CFG.env.fermTau, CFG.env.fermDiff, [255, 224, 96]);
+  fAlarm = new Field(W.cols, W.rows, CFG.env.alarmTau, CFG.env.alarmDiff, [255, 74, 110]);
+}
+
+/* ============================================================================
+   细胞类型表（取自 FAFB v783 的注释体系；group 分组沿用社区全脑仿真的读出面）
+   sign: +1 兴奋（胆碱能 ACh）/ -1 抑制（GABA、谷氨酸——注意在果蝇中 Glu 多为抑制性）
+   ========================================================================== */
+const CTYPE = [
+  /* name, group, sign, count, note */
+  ['ORN_food', 'Sensory', 1, 4, '食物气味感受神经元（酵母/发酵酯类 glomeruli）'],
+  ['ORN_ferm', 'Sensory', 1, 3, '发酵气味感受神经元（乙醇/乙酸类，粘板诱饵）'],
+  ['ORN_alarm', 'Sensory', 1, 2, '报警信息素感受神经元（同伴被粘时释放）'],
+  ['GRN_sugar', 'Sensory', 1, 2, '糖味觉感受神经元（跗节/唇瓣 GR）'],
+  ['mechano', 'Sensory', 1, 3, '机械感觉（触碰/碰撞/风）'],
+  ['visual', 'Sensory', 1, 2, '视觉（突现 looming / 光流）'],
+  ['Hugin', 'Drives', 1, 2, 'SEZ 饥饿驱动神经元（Hugin，饥饿信号）'],
+  ['NPF', 'Drives', 1, 2, 'SEZ NPF 取食促进神经元'],
+  ['FB_energy', 'Drives', -1, 2, '扇形体 FB 能量稳态（饱足信号，抑制取食）'],
+  ['LN_al', 'Central', -1, 3, '触角叶局部中间神经元（GABA 增益控制）'],
+  ['PN', 'Central', 1, 6, '触角叶投射神经元（气味信息主通道）'],
+  ['LHON', 'Central', 1, 4, '侧角输出神经元（气味吸引/趋源）'],
+  ['KC', 'Central', 1, 8, '蘑菇体 Kenyon 细胞（稀疏编码，稀疏激活）'],
+  ['APL', 'Central', -1, 1, '蘑菇体前侧成对侧神经元 APL（GABA 反馈：维持 KC 稀疏码）'],
+  ['MBON_app', 'Central', 1, 2, 'MBON γ5β′2a（食欲性价值输出）'],
+  ['MBON_av', 'Central', -1, 2, 'MBON α3（厌恶性价值输出，谷氨酸能抑制）'],
+  ['DAN_PPL1', 'Central', 1, 2, 'PPL1 多巴胺能神经元（惩罚信号）'],
+  ['DAN_PAM', 'Central', 1, 2, 'PAM 多巴胺能神经元（奖赏信号）'],
+  ['ring_EB', 'Central', 1, 3, '椭球体 ring 神经元 R1–R4（航向/地标记忆）'],
+  ['PFN', 'Central', 1, 2, '扇形体-椭球体桥神经元（转向输出）'],
+  ['DN_escape', 'Central', 1, 2, '下行神经元 DNa01/DNa02（巨纤维逃逸）'],
+  ['DN_walk', 'Central', 1, 2, '下行神经元 DNp09/DNg11（行进驱动）'],
+  ['MN_feed', 'Motor', 1, 2, '运动神经元 MN9（喙伸展/取食）'],
+  ['MN_walk', 'Motor', 1, 2, '行进运动神经元（腿/翅）'],
+  ['MN_steerL', 'Motor', 1, 2, '左转运动神经元'],
+  ['MN_steerR', 'Motor', 1, 2, '右转运动神经元'],
+  ['MN_oviposit', 'Motor', 1, 2, '产卵运动神经元（腹部运动程序）']
+];
+
+/* 连接表 [前, 后, 突触数, 可塑性标记]
+   nSyn = 两群神经元之间的突触总数；每对神经元的平均突触数 spp = nSyn/(nPre·nPost)。
+   FAFB 实测中"强连接"约 5–20 个突触/对、弱连接 1–4 个，本表按该量级设定，
+   <5 突触的边按惯例丢弃（synMin）。可塑性：'av' 惩罚性，'app' 食欲性。 */
+const CONNECTIONS = [
+  /* --- 感觉 → 触角叶 / 食管下区 / 下行神经元 --- */
+  ['ORN_food', 'PN', 192], ['ORN_food', 'LN_al', 60],
+  ['ORN_ferm', 'PN', 144], ['ORN_ferm', 'LN_al', 45],
+  ['ORN_alarm', 'DAN_PPL1', 40],
+  ['ORN_alarm', 'DN_escape', 40], ['ORN_alarm', 'MBON_av', 70],
+  ['GRN_sugar', 'MN_feed', 40], ['GRN_sugar', 'NPF', 40], ['GRN_sugar', 'DAN_PAM', 24],
+  ['mechano', 'DN_escape', 60], ['mechano', 'MN_walk', 18],
+  ['visual', 'DN_escape', 48], ['visual', 'ring_EB', 24],
+  /* --- 触角叶：局部抑制 + 投射 --- */
+  ['LN_al', 'PN', 72],
+  ['PN', 'LHON', 120], ['PN', 'KC', 288], ['PN', 'PFN', 36],
+  ['PN', 'DAN_PAM', 24], ['PN', 'DAN_PPL1', 24],
+  ['LHON', 'DN_walk', 64], ['LHON', 'MN_feed', 32], ['LHON', 'DAN_PAM', 24],
+  /* --- 蘑菇体：KC 稀疏编码、APL 反馈、价值读出、多巴胺学习 --- */
+  ['KC', 'APL', 80], ['APL', 'KC', 80],
+  ['KC', 'MBON_app', 48, 'app'], ['KC', 'MBON_av', 48, 'av'],
+  ['MBON_app', 'DN_walk', 48], ['MBON_app', 'PFN', 24],
+  ['MBON_av', 'DN_walk', 48], ['MBON_av', 'MN_feed', 90], ['MBON_av', 'LHON', 64],
+  ['DAN_PPL1', 'MBON_av', 40], ['DAN_PAM', 'MBON_app', 40],
+  /* --- 饥饿 / 饱足（SEZ·FB）调制 --- */
+  ['Hugin', 'LHON', 40], ['Hugin', 'MN_walk', 48], ['Hugin', 'MBON_av', 24],
+  ['Hugin', 'NPF', 24], ['NPF', 'MN_feed', 32], ['NPF', 'DN_walk', 12], ['NPF', 'MN_oviposit', 32],
+  ['FB_energy', 'MN_feed', 48], ['FB_energy', 'Hugin', 32], ['FB_energy', 'MN_oviposit', 24],
+  /* --- 中央复合体（航向 / 转向） --- */
+  ['ring_EB', 'PFN', 30], ['PFN', 'DN_walk', 24],
+  ['PFN', 'MN_steerL', 24], ['PFN', 'MN_steerR', 24],
+  /* --- 下行指令 → 运动神经元 --- */
+  ['DN_escape', 'MN_walk', 40], ['DN_escape', 'MN_steerL', 24],
+  ['DN_walk', 'MN_walk', 48], ['DN_walk', 'MN_steerR', 12]
+];
+
+/* ------------------- 编译网络（全局拓扑，各脑共享） ------------------- */
+function compileNet() {
+  const ct = {}, names = [], groups = [], sig = [];
+  let idx = 0;
+  for (const [name, group, sign, count] of CTYPE) {
+    ct[name] = { start: idx, n: count, group, sign };
+    for (let k = 0; k < count; k++) { names.push(name); groups.push(group); sig.push(sign); }
+    idx += count;
+  }
+  const n = idx;
+  const S = [], D = [], W0 = [], PL = [], SYN = [];
+  const B = CFG.brain;
+  let dropped = 0, totalSyn = 0, modEdges = 0;
+  for (const [a, b, ns, pl] of CONNECTIONS) {
+    totalSyn += ns;
+    if (ns < B.synMin) { dropped++; continue; }   // ≥5 突触规则
+    const A = ct[a], Bq = ct[b];
+    const per = ns / (A.n * Bq.n);
+    // 多巴胺是神经调质而非快速递质：DAN 的出边不产生突触电流，只门控可塑性
+    const isMod = (a === 'DAN_PPL1' || a === 'DAN_PAM');
+    if (isMod) modEdges++;
+    const w = isMod ? 0 : B.wSyn * B.gain * B.K * (per / 5) * A.sign;
+    for (let i = 0; i < A.n; i++) {
+      for (let j = 0; j < Bq.n; j++) {
+        S.push(A.start + i); D.push(Bq.start + j);
+        W0.push(w); SYN.push(ns);
+        PL.push(pl === 'av' ? 1 : pl === 'app' ? 2 : 0);
+      }
+    }
+  }
+  const E = S.length;
+  // CSR：按前神经元聚合出边
+  const outStart = new Int32Array(n + 1);
+  for (let e = 0; e < E; e++) outStart[S[e] + 1]++;
+  for (let i = 0; i < n; i++) outStart[i + 1] += outStart[i];
+  const cursor = outStart.slice(0, n);
+  const oDst = new Int32Array(E), oW = new Int32Array(E), oE = new Int32Array(E);
+  for (let e = 0; e < E; e++) {
+    const p = cursor[S[e]]++;
+    oDst[p] = D[e]; oW[p] = e; oE[p] = e;
+  }
+  return { n, ct, names, groups, sig, S, D, W0: Float32Array.from(W0), PL: Uint8Array.from(PL),
+    SYN, outStart, oDst, oW, E, totalSyn, dropped, modEdges };
+}
+let NET = compileNet();
+
+/* ----------------------------- 单个果蝇脑 -----------------------------
+   cuLIF（电流型泄漏积分发放）网络，参数与 flybench/Shiu2024 口径一致：
+   τm=20ms, τsyn=5ms, vThr=1, vReset=0, 2ms 不应期。
+   放电率估计 r[i] 以 Hz 直接读出（低通 τR=200ms）——行为即“读出运动神经元”。 */
+class Brain {
+  constructor(gene) {
+    const n = NET.n;
+    this.n = n;
+    this.v = new Float32Array(n);
+    this.I = new Float32Array(n);      // 突触电流
+    this.ext = new Float32Array(n);    // 外部（感觉/驱动）电流
+    this.r = new Float32Array(n);      // 放电率 (Hz)
+    this.refr = new Float32Array(n);
+    this.a = new Float32Array(n);      // 适应电流（spike-frequency adaptation）
+    this.w = NET.W0.slice();           // 本脑可塑权重副本
+    this.w0 = NET.W0.slice();
+    this.gene = gene || {};
+    this.kcBase = NET.ct.KC.start;
+    this.kcN = NET.ct.KC.n;
+    this.kcTrace = new Float32Array(this.kcN);
+    this.daTrace = new Float32Array(NET.ct.DAN_PPL1.n);
+    this.popRate = 0;
+    this.popRateSlow = 0;
+    this.lastSpikes = 0;
+    this.raster = new Uint8Array(n);   // 供脑活动视图闪烁
+  }
+  rate(name) {
+    const c = NET.ct[name];
+    let s = 0;
+    for (let i = 0; i < c.n; i++) s += this.r[c.start + i];
+    return s / c.n;
+  }
+  step(dt) {
+    const B = CFG.brain, n = this.n;
+    const v = this.v, I = this.I, ext = this.ext, r = this.r, refr = this.refr, ad = this.a;
+    const decI = Math.exp(-dt / B.tauSyn);
+    const decR = Math.exp(-dt / B.tauR);
+    const decA = Math.exp(-dt / B.tauAdapt);
+    for (let i = 0; i < n; i++) { I[i] *= decI; r[i] *= decR; ad[i] *= decA; this.raster[i] = 0; }
+    /* 自发噪声：低概率给单个神经元瞬时驱动（静默输入 → 稀疏自发活动） */
+    if (B.noise > 0) {
+      const kicks = B.noise * n * dt * 3;
+      let k = Math.floor(kicks) + (Math.random() < (kicks % 1) ? 1 : 0);
+      while (k-- > 0) I[(Math.random() * n) | 0] += 1.25;
+    }
+    /* 积分 + 发放 + 传导 */
+    const dtM = dt / B.tauM, rGain = 1 / B.tauR;
+    let spikeCount = 0;
+    for (let i = 0; i < n; i++) {
+      if (refr[i] > 0) { refr[i] -= dt; v[i] = 0; continue; }
+      const vi = v[i] + dtM * (-v[i] + I[i] + ext[i] - ad[i]);
+      if (vi >= B.vThr) {
+        v[i] = B.vReset; refr[i] = B.vRefrac; ad[i] += B.adapt;
+        spikeCount++;
+        r[i] += rGain;
+        this.raster[i] = 1;
+        if (i >= this.kcBase && i < this.kcBase + this.kcN) this.kcTrace[i - this.kcBase] += 1;
+        const s0 = NET.outStart[i], s1 = NET.outStart[i + 1];
+        for (let e = s0; e < s1; e++) I[NET.oDst[e]] += this.w[NET.oW[e]];
+      } else v[i] = vi;
+    }
+    /* 资格迹衰减 */
+    const decK = Math.exp(-dt / B.plasticTau);
+    for (let i = 0; i < this.kcN; i++) this.kcTrace[i] *= decK;
+    /* 多巴胺依赖可塑性：PPL1 → MBON_av 权重↑（惩罚学习）/ PAM → MBON_app 权重↑（奖赏学习）*/
+    const daP = this.rate('DAN_PPL1'), daR = this.rate('DAN_PAM');
+    // 只有超过阈值的多巴胺才"教会"记忆（多巴胺门控），并做饱和归一化
+    const dopP = clamp((daP - B.daThresh) / 25, 0, 1.5);
+    const dopR = clamp((daR - B.daThresh) / 25, 0, 1.5);
+    if (dopP > 0 || dopR > 0) {
+      const kP = B.lr * dopP * dt, kR = B.lr * dopR * dt;
+      for (let e = 0; e < NET.E; e++) {
+        const pl = NET.PL[e]; if (!pl) continue;
+        const tr = Math.min(1.2, this.kcTrace[NET.S[e] - this.kcBase] / 6);   // 归一化资格迹
+        if (tr < 0.03) continue;
+        const w0 = this.w0[e];
+        if (pl === 1 && kP > 0) this.w[e] = clamp(this.w[e] + kP * tr * w0, 0, w0 * B.wMax);
+        else if (pl === 2 && kR > 0) this.w[e] = clamp(this.w[e] + kR * tr * w0, 0, w0 * B.wMax);
+      }
+    } else {
+      /* 消退（extinction）：闻到气味但这种气味不再带惩罚 → KC→MBON_av 权重缓慢回落 */
+      const kE = B.lr * B.extinct * dt;
+      for (let e = 0; e < NET.E; e++) {
+        if (NET.PL[e] !== 1) continue;
+        const tr = Math.min(1.2, this.kcTrace[NET.S[e] - this.kcBase] / 6);
+        if (tr < 0.03) continue;
+        const w0 = this.w0[e];
+        this.w[e] = clamp(this.w[e] - kE * tr * w0, w0 * 0.35, w0 * B.wMax);
+      }
+    }
+    /* 遗忘：可塑权重缓慢回到基线 */
+    for (let e = 0; e < NET.E; e++) {
+      if (!NET.PL[e]) continue;
+      const w0 = this.w0[e];
+      this.w[e] += (w0 - this.w[e]) * dt * 0.03;
+    }
+    this.lastSpikes = spikeCount;
+    this.popRate = spikeCount / n / dt;
+    this.popRateSlow += (this.popRate - this.popRateSlow) * Math.min(1, dt / 1.5);
+  }
+  /* 各行为读出（运动/下行神经元放电率 → 行为量） */
+  aversion() { return clamp(this.rate('MBON_av') / 20, 0, 1); }
+  attraction() { return clamp(this.rate('MBON_app') / 8, 0, 1); }
+  walkDrive() { return this.rate('MN_walk') / 25; }
+  feedDrive() { return this.rate('MN_feed'); }
+  steerBias() { return (this.rate('MN_steerR') - this.rate('MN_steerL')) / 25; }
+  escapeDrive() { return this.rate('DN_escape'); }
+  ovipDrive() { return this.rate('MN_oviposit'); }
+  /* 学习强度：KC→MBON_av 权重相对基线的平均倍数（1 = 未学习） */
+  learnIndex() {
+    let s = 0, c = 0;
+    for (let e = 0; e < NET.E; e++) {
+      if (NET.PL[e] !== 1) continue;
+      s += this.w[e] / this.w0[e]; c++;
+    }
+    return c ? s / c : 1;
+  }
+  /* 供 UI：最活跃的若干细胞类型（其实只有 name → 索引统一，无性能问题） */
+  topTypes(k) {
+    const arr = [];
+    for (const name in NET.ct) {
+      const c = NET.ct[name];
+      let s = 0;
+      for (let i = 0; i < c.n; i++) s += this.r[c.start + i];
+      arr.push([name, s / c.n]);
+    }
+    arr.sort((a, b) => b[1] - a[1]);
+    return arr.slice(0, k || 5);
+  }
+}
+
+/* ----------------------------- 果蝇个体 -----------------------------
+   感觉编码 → 脉冲脑 → 运动读出 → 行为。
+   中枢脑决定“要不要/去哪里/风险”，导航反射（气味梯度、zig-zag 搜索、避障）
+   由 VNC 局部回路补全 —— 对应“DN 下达指令 + VNC 局部控制环”。 */
+let flyId = 1;
+const GROUPS = ['Sensory', 'Drives', 'Central', 'Motor'];
+
+class Fly {
+  constructor(x, y, gene) {
+    this.id = flyId++;
+    this.x = x; this.y = y;
+    this.dir = rand(0, TAU);
+    this.gene = gene || {
+      speed: rand(0.85, 1.15), sense: rand(0.85, 1.15), brainGain: rand(0.85, 1.15),
+      learn: rand(0.8, 1.2), size: rand(0.9, 1.1), noise: rand(0.8, 1.2)
+    };
+    this.brain = new Brain(this.gene);
+    const g = this.gene.brainGain;
+    for (let e = 0; e < NET.E; e++) this.brain.w[e] *= g;    // 个体兴奋性差异（≈全局 gain 变异）
+    this.energy = CFG.fly.eStart * rand(0.85, 1.0);
+    this.age = 0; this.eating = false; this.feedAcc = 0;
+    this.state = 'cruise';
+    this.speed = CFG.fly.cruise;
+    this.wingPhase = rand(0, TAU);
+    this.castSeed = rand(0, TAU);
+    this.mem = [];
+    this.cool = 0; this.pherT = rand(0, 0.3); this.pulse = 0;
+    this.stuckT = 0; this.trap = null; this.onTrap = null;
+    this.jitter = rand(0, TAU);
+    this.brainAcc = 0;
+    this.odSat = 0; this.fermSat = 0; this.alSat = 0;
+    this.trapNear = 0; this.trapDist = 1e9; this.peakAversion = 0; this.usContact = 0;
+    this.escapeT = 0;
+    this.dead = false; this.deadT = 0; this.cause = '';
+    this.pheromone = 0;                 // 本个体释放的信息素强度（视觉用）
+  }
+
+  /* ---- 感觉编码：把环境量写成各感觉神经元的外部驱动电流 ---- */
+  encode(dt) {
+    const b = this.brain, ext = b.ext;
+    ext.fill(0);
+    const E = CFG.env, F = CFG.fly;
+    const hunger = clamp(1 - this.energy / F.hungryAt, 0, 1);
+    this.hunger = hunger;
+
+    const oA = fFood.at(this.x, this.y);
+    const oB = fFerm.at(this.x, this.y);
+    const al = fAlarm.at(this.x, this.y);
+    let onFood = false;
+    for (const f of W.foods) {
+      if (Math.hypot(f.x - this.x, f.y - this.y) < CFG.food.r + CFG.food.feedRange) { onFood = true; break; }
+    }
+    this.onFood = onFood;
+    this.odSat = oA / (oA + 0.45);
+    this.fermSat = oB / (oB + 0.45);
+    this.alSat = al / (al + 0.75);
+    const alW = onFood ? 0.25 : 1;      // 已经在取食的个体，警戒信号优先度下调
+
+    /* 嗅觉（AL 增益受饥饿调制：饿则嗅觉更灵） */
+    const oGain = this.gene.sense * (0.7 + 1.3 * hunger);
+    this.setExt('ORN_food', 2.45 * this.odSat * oGain);
+    this.setExt('ORN_ferm', 2.25 * this.fermSat * oGain);
+    this.setExt('ORN_alarm', 2.25 * this.alSat * alW);
+
+    /* 味觉：落在食物上 → 糖 GRN 强驱动（喙伸展反射） */
+    this.setExt('GRN_sugar', onFood ? 2.40 : 0);
+
+    /* 机械感觉：贴壁 / 与同伴相撞 */
+    let mech = 0;
+    const wp = F.wallPad;
+    if (this.x < wp * 0.4 || this.x > W.w - wp * 0.4 || this.y < wp * 0.4 || this.y > W.h - wp * 0.4) mech += 1.2;
+    for (const o of W.flies) {
+      if (o === this || o.dead) continue;
+      if (Math.hypot(o.x - this.x, o.y - this.y) < 6) { mech += 1.0; break; }
+    }
+    this.setExt('mechano', mech);
+
+    /* 视觉：粘板/被粘同伴构成的"突现"刺激（looming）→ 巨纤维逃逸通路 */
+    let loom = 0.2;
+    this.trapNear = 0; this.trapDist = 1e9;
+    for (const t of W.traps) {
+      const d = rectDist(this.x, this.y, t);          // 到粘板表面的距离
+      this.trapDist = Math.min(this.trapDist, d);
+      if (d < CFG.trap.nearR) this.trapNear = Math.max(this.trapNear, 1 - d / CFG.trap.nearR);
+    }
+    loom += 1.9 * this.trapNear;
+    this.setExt('visual', loom);
+
+    /* 内部驱动：饥饿 / 取食 / 饱足（SEZ·FB） */
+    this.setExt('Hugin', 2.05 * hunger);
+    this.setExt('NPF', this.eating ? 2.10 : 0.45 + 0.8 * this.odSat * (onFood ? 1 : 0.3));
+    // 饱足（FB 扇形体）是非线性的：只有接近满能量时才强烈抑制取食
+    this.setExt('FB_energy', 2.05 * clamp((this.energy / F.eMax - 0.8) / 0.2, 0, 1));
+
+    /* 非条件刺激（US）：粘板表面的挥发性刺激 → PPL1 多巴胺惩罚信号
+       —— 这是"气味(CS) + 惩罚(US) → MB 记忆"的 US 端 */
+    const us = 2.20 * clamp(1 - this.trapDist / CFG.trap.usR, 0, 1) + 2.40 * (this.usContact > 0 ? 1 : 0);
+    this.setExt('DAN_PPL1', us + 1.5 * this.alSat * alW);
+
+    /* 产卵运动程序：能量 + 蛋白（摄食）积累足够时的内部驱动 */
+    const ready = (this.energy > F.reproEnergy && this.feedAcc >= F.feedNeed) ? 1 : 0;
+    this.setExt('MN_oviposit', ready * 2.10);
+    this.reproReady = ready;
+  }
+  setExt(name, v) {
+    const c = NET.ct[name], ext = this.brain.ext;
+    for (let i = 0; i < c.n; i++) ext[c.start + i] = v;
+  }
+
+  update(dt) {
+    const F = CFG.fly;
+    if (this.dead) { this.deadT += dt; return; }
+    this.age += dt;
+    this.cool = Math.max(0, this.cool - dt);
+    this.pulse = Math.max(0, this.pulse - dt * 3);
+    this.jitter += dt * 9;
+    this.escapeT = Math.max(0, this.escapeT - dt);
+    this.usContact = Math.max(0, this.usContact - dt);
+
+    if (this.state === 'trapped') { this.updateTrapped(dt); return; }
+
+    /* ---------- 感觉编码 + 脑推进 ---------- */
+    this.encode(dt);
+    this.brainAcc += dt;
+    const stepDt = CFG.brain.dt;
+    let steps = 0;
+    const maxSteps = W.flies.length > 70 ? 1 : CFG.brain.stepsPerFrame;
+    while (this.brainAcc >= stepDt && steps < maxSteps) {
+      this.brain.step(stepDt); this.brainAcc -= stepDt; steps++;
+    }
+    if (this.brainAcc > 0.06) this.brainAcc = 0;
+
+    const b = this.brain;
+    const hunger = this.hunger;
+    const aversion = b.aversion();          // MBON_av：学到的"这东西危险"
+    if (aversion > this.peakAversion) this.peakAversion = aversion;
+    const walkD = clamp(b.walkDrive(), 0, 2.5);
+    const escape = b.escapeDrive();
+    this.aversion = aversion;
+
+    /* ---------- 逃逸（巨纤维 / DN_escape 爆发） ---------- */
+    if (escape > F.escapeThr && this.escapeT <= 0) {
+      this.escapeT = 0.45;
+      this.dir += (Math.random() < 0.5 ? -1 : 1) * rand(1.2, 2.4);
+      sparks(this.x, this.y, [255, 210, 140], 6);
+      this.state = 'alarm';
+    }
+
+    /* ---------- 导航反射（VNC 局部回路） ---------- */
+    const want = { x: 0, y: 0 };
+    const seenFood = this.odSat > CFG.env.senseThresh;
+    const seenFerm = this.fermSat > CFG.env.senseThresh;
+    const risk = clamp(1 - 0.85 * aversion, 0.12, 1);   // 学到的回避 → 抑制趋源
+    if (seenFood) {
+      const [gx, gy] = fFood.grad(this.x, this.y);
+      const n = Math.hypot(gx, gy) || 1;
+      const dirv = this.nearSourceVec('food');
+      const ux = gx / n * 0.6 + dirv.x, uy = gy / n * 0.6 + dirv.y;
+      const m = Math.hypot(ux, uy) || 1;
+      const w = this.odSat * F.seekGain * this.gene.sense * (0.45 + 1.75 * hunger);
+      want.x += ux / m * w; want.y += uy / m * w;
+    }
+    if (seenFerm) {
+      const [gx, gy] = fFerm.grad(this.x, this.y);
+      const n = Math.hypot(gx, gy) || 1;
+      const dirv = this.nearSourceVec('trap');
+      const ux = gx / n * 0.6 + dirv.x, uy = gy / n * 0.6 + dirv.y;
+      const m = Math.hypot(ux, uy) || 1;
+      const w = this.fermSat * F.fermentGain * (0.45 + 1.75 * hunger) * risk;
+      want.x += ux / m * w; want.y += uy / m * w;
+    }
+    /* 报警信息素 + 记忆 + 学会后的粘板绕行 */
+    if (this.alSat > CFG.env.senseThresh) {
+      const [gx, gy] = fAlarm.grad(this.x, this.y);
+      const n = Math.hypot(gx, gy) || 1;
+      const w = this.alSat * F.alarmGain * (1 - 0.5 * hunger);   // 饿则冒险
+      want.x -= gx / n * w; want.y -= gy / n * w;
+    }
+    if (aversion > 0.1) {
+      let rx = 0, ry = 0;
+      const A = CFG.trap.avoidR, G = CFG.trap.avoidGain;
+      for (const t of W.traps) {
+        const cx = t.x + CFG.trap.w / 2, cy = t.y + CFG.trap.h / 2;
+        const dx = this.x - cx, dy = this.y - cy, d = Math.hypot(dx, dy) || 1;
+        const surf = rectDist(this.x, this.y, t);
+        if (surf > A) continue;
+        const w = (1 - surf / A) * aversion * G;
+        rx += dx / d * w; ry += dy / d * w;
+        /* 侧向规避：若正朝粘板飞（前进方向与"指向粘板"夹角小），加一个垂直分量把它推开 */
+        const toTrap = Math.atan2(cy - this.y, cx - this.x);
+        if (Math.abs(angDiff(toTrap, this.dir)) < 1.0) {
+          const side = angDiff(toTrap, this.dir) > 0 ? -1 : 1;
+          const px = Math.cos(this.dir + Math.PI / 2 * side), py = Math.sin(this.dir + Math.PI / 2 * side);
+          const k = (1 - surf / A) * aversion * G * 0.8;
+          rx += px * k; ry += py * k;
+        }
+      }
+      want.x += rx; want.y += ry;
+    }
+    for (const m of this.mem) {
+      const dx = this.x - m.x, dy = this.y - m.y, d = Math.hypot(dx, dy) || 1;
+      if (d < CFG.trap.nearR) { const w = (1 - d / CFG.trap.nearR) * m.s * 1.6; want.x += dx / d * w; want.y += dy / d * w; }
+    }
+    /* 边界回避 */
+    const wp = F.wallPad;
+    if (this.x < wp) want.x += (1 - this.x / wp) * 1.2;
+    if (this.x > W.w - wp) want.x -= (1 - (W.w - this.x) / wp) * 1.2;
+    if (this.y < wp) want.y += (1 - this.y / wp) * 1.2;
+    if (this.y > W.h - wp) want.y -= (1 - (W.h - this.y) / wp) * 1.2;
+
+    /* ---------- 航向：反射 + 中央复合体/转向运动神经元的偏置 ---------- */
+    const wm = Math.hypot(want.x, want.y);
+    if (wm > 0.08) {
+      const desired = Math.atan2(want.y, want.x);
+      this.dir += clamp(angDiff(desired, this.dir), -F.turnRate * dt, F.turnRate * dt);
+    } else {
+      this.dir += Math.sin(this.age * 13 + this.castSeed) * F.cast * dt * 0.55;   // casting
+    }
+    this.dir += clamp(b.steerBias() * F.steerGain, -3, 3) * dt;                   // 脑的转向偏置
+    const focus = clamp(this.odSat + this.fermSat * 0.7, 0, 1);
+    this.dir += F.noise * this.gene.noise * (1 - 0.75 * focus) * randn() * dt;
+
+    /* ---------- 速度：由 MN_walk 放电率驱动 ---------- */
+    const tracking = wm > 0.35;
+    const base = tracking ? F.surge : F.cruise;
+    let target = base * (0.75 + 0.5 * hunger) * this.gene.speed * clamp(0.45 + 0.85 * walkD, 0.3, 2.3);
+    if (this.escapeT > 0) target *= 1.9;
+    if (this.eating) target *= 0.25;
+    if (aversion > 0.45 && this.trapDist < 45) target *= 0.55;   // 学会后靠近粘板会减速悬停
+    this.speed += (target - this.speed) * clamp(dt * 6, 0, 1);
+
+    if (this.escapeT > 0) this.state = 'alarm';
+    else if (this.eating) this.state = 'feed';
+    else if (tracking) this.state = 'seek';
+    else this.state = 'cast';
+
+    /* ---------- 移动 ---------- */
+    this.x += Math.cos(this.dir) * this.speed * dt + randn() * 0.06;
+    this.y += Math.sin(this.dir) * this.speed * dt + randn() * 0.06;
+    this.x = clamp(this.x, 2, W.w - 2); this.y = clamp(this.y, 2, W.h - 2);
+    this.wingPhase += dt * (16 + this.speed * 0.07);
+
+    /* ---------- 代谢（FB 扇形体：能量稳态） ---------- */
+    let cost = F.drainBase + F.drainMove * (this.speed / F.surge) * 2;
+    if (this.energy < F.desperateAt) cost *= 0.7;
+    this.energy -= cost * dt;
+
+    /* ---------- 取食：MN_feed（MN9）放电率 > 阈值 → 喙伸展取食 ---------- */
+    this.eating = false;
+    if (this.onFood) {
+      const feed = b.feedDrive();
+      if (feed > F.feedThr) {
+        this.eating = true;
+        this.state = 'feed';
+        this.energy = Math.min(F.eMax, this.energy + CFG.food.feedRate * dt);
+        this.feedAcc = Math.min(F.feedNeed, this.feedAcc + dt);
+        this.dir += Math.sin(this.age * 6) * 1.2 * dt;
+      }
+    }
+
+    /* ---------- 产卵：MN_oviposit 放电率 > 阈值 ---------- */
+    if (this.reproReady && this.cool <= 0 && this.age > 5 && b.ovipDrive() > F.ovipThr &&
+      W.flies.length < CFG.pop.max && Math.random() < F.reproChance * dt * 3) {
+      this.feedAcc = 0;
+      this.layEgg();
+    }
+
+    /* ---------- 记忆衰减 ---------- */
+    for (const m of this.mem) m.s -= dt / F.forgetTau + 0.004 * dt;
+    this.mem = this.mem.filter(m => m.s > 0.03);
+    if (this.mem.length > F.memMax) this.mem.shift();
+
+    /* ---------- 粘板：捕获 + 惩罚学习（MB 记忆由 DAN 驱动） ---------- */
+    for (const t of W.traps) {
+      const inside = this.x > t.x && this.x < t.x + CFG.trap.w && this.y > t.y && this.y < t.y + CFG.trap.h;
+      if (inside) {
+        if (Math.random() < CFG.trap.capture) { this.getStuck(t); break; }
+        /* 接触胶面但没被粘住：挣扎弹开，同时受到强烈的伤害性刺激（学习信号） */
+        const cx = t.x + CFG.trap.w / 2, cy = t.y + CFG.trap.h / 2;
+        let dx = this.x - cx, dy = this.y - cy;
+        if (Math.abs(dx) / CFG.trap.w > Math.abs(dy) / CFG.trap.h) {
+          this.x = clamp(t.x + (dx > 0 ? CFG.trap.w + 3 : -3), 2, W.w - 2);
+        } else {
+          this.y = clamp(t.y + (dy > 0 ? CFG.trap.h + 3 : -3), 2, W.h - 2);
+        }
+        this.dir += rand(1.2, 2.6) * (Math.random() < 0.5 ? -1 : 1);
+        this.escapeT = CFG.trap.bounce;
+        this.usContact = 1.6;                  // 强惩罚信号（几秒内持续放电）
+        this.peakAversion = Math.max(this.peakAversion, 0.4);
+        sparks(this.x, this.y, [255, 200, 120], 5);
+        break;
+      }
+      const cx = t.x + CFG.trap.w / 2, cy = t.y + CFG.trap.h / 2;
+      const d = Math.hypot(this.x - cx, this.y - cy);
+      if (d < CFG.trap.learnR && aversion > 0.25 && Math.random() < dt * 0.6) {
+        this.mem.push({ x: cx, y: cy, s: 0.5 + 0.5 * aversion });
+        if (this.mem.length > F.memMax) this.mem.shift();
+      }
+    }
+
+    if (this.energy <= 0) { this.energy = 0; this.die('energy'); return; }
+    if (this.age > F.lifespan) { this.die('age'); return; }
+  }
+
+  nearSourceVec(kind) {
+    const V = CFG.env.visionRange;
+    let vx = 0, vy = 0;
+    const list = kind === 'food'
+      ? W.foods.map(f => [f.x, f.y])
+      : W.traps.map(t => [t.x + CFG.trap.w / 2, t.y + CFG.trap.h / 2]);
+    for (const [px, py] of list) {
+      const dx = px - this.x, dy = py - this.y, d = Math.hypot(dx, dy);
+      if (d < V && d > 1) { const w = (1 - d / V) * 1.4; vx += dx / d * w; vy += dy / d * w; }
+    }
+    return { x: vx, y: vy };
+  }
+
+  updateTrapped(dt) {
+    const P = CFG.pher;
+    this.stuckT += dt;
+    this.speed = 0;
+    this.wingPhase += dt * 62;
+    this.energy -= P.drain * dt;
+
+    /* 被粘住时：强烈的伤害性刺激持续激活 PPL1 多巴胺系统
+       → 与当时的气味表征（KC 活动）配对，写入 MB 厌恶性记忆 */
+    this.brain.ext.fill(0);
+    this.setExt('DAN_PPL1', 4.0);
+    this.setExt('mechano', 2.2);
+    this.setExt('ORN_ferm', 2.25 * this.fermSat);
+    this.setExt('ORN_alarm', 2.25 * this.alSat);
+    const maxSteps = W.flies.length > 70 ? 1 : CFG.brain.stepsPerFrame;
+    let steps = 0;
+    this.brainAcc += dt;
+    while (this.brainAcc >= CFG.brain.dt && steps < maxSteps) {
+      this.brain.step(CFG.brain.dt); this.brainAcc -= CFG.brain.dt; steps++;
+    }
+    this.aversion = this.brain.aversion();
+    if (this.aversion > this.peakAversion) this.peakAversion = this.aversion;
+
+    /* 释放警报信息素（同伴会回避）—— 由挣扎强度决定 */
+    this.pherT += dt;
+    const emitting = this.stuckT < P.emitDur && this.energy > 0;
+    if (emitting && this.pherT >= P.interval) {
+      this.pherT = 0;
+      fAlarm.deposit(this.x, this.y, P.emit * P.interval, P.emitR);
+      this.pulse = 1;
+    }
+    this.pheromone = emitting ? 1 : 0;
+
+    if (Math.random() < 1 - Math.exp(-P.escape * dt)) {
+      this.state = 'cruise';
+      this.trap = null;
+      this.energy = Math.max(this.energy, 12);
+      this.escapeT = 0.6;
+      sparks(this.x, this.y, [180, 255, 220], 10);
+    }
+    if (this.energy <= 0) { this.energy = 0; this.die('stuck'); }
+    else if (this.age > CFG.fly.lifespan) this.die('age');
+  }
+
+  getStuck(t) {
+    this.state = 'trapped';
+    this.trap = t; this.onTrap = t;
+    this.stuckT = 0;
+    this.speed = 0;
+    sparks(this.x, this.y, [255, 138, 120], 8);
+  }
+
+  layEgg() {
+    const F = CFG.fly;
+    this.energy -= F.reproCost;
+    this.cool = F.reproCool;
+    const ang = rand(0, TAU), r = rand(4, 14);
+    W.eggs.push({
+      x: clamp(this.x + Math.cos(ang) * r, 6, W.w - 6),
+      y: clamp(this.y + Math.sin(ang) * r, 6, W.h - 6),
+      t: 0, ttl: F.eggTime * rand(0.85, 1.15), ph: rand(0, TAU),
+      gene: mutate(this.gene)
+    });
+    W.births++;
+  }
+
+  die(cause) {
+    this.dead = true; this.cause = cause; this.deadT = 0;
+    this.state = 'dead';
+    W.deaths++;
+    W.deathsByCause[cause] = (W.deathsByCause[cause] || 0) + 1;
+    this.pheromone = 0;
+    if (this.onTrap) {
+      this.onTrap.bodies = this.onTrap.bodies || [];
+      this.onTrap.bodies.push({ x: this.x, y: this.y, dir: this.dir });
+    }
+  }
+}
+function mutate(g) {
+  const m = CFG.fly.mutate, n = {};
+  for (const k in g) n[k] = clamp(g[k] * (1 + randn() * m), 0.5, 1.6);
+  return n;
+}
+
+/* ----------------------------- 粒子 ----------------------------- */
+const particles = [];
+function sparks(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), sp = rand(20, 90);
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.3, 0.8), t: 0, c: color });
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.95; p.vy *= 0.95;
+    if (p.t > p.life) particles.splice(i, 1);
+  }
+}
+
+/* ----------------------------- 放置 / 清除 ----------------------------- */
+function place(x, y) {
+  const m = W.mode;
+  if (m === 'food') {
+    if (W.foods.some(f => Math.hypot(f.x - x, f.y - y) < CFG.food.r * 1.6)) return false;
+    W.foods.push({ x, y, ph: rand(0, TAU) });
+    return true;
+  }
+  if (m === 'trap') {
+    const t = { x: clamp(x - CFG.trap.w / 2, 0, W.w - CFG.trap.w), y: clamp(y - CFG.trap.h / 2, 0, W.h - CFG.trap.h), ph: rand(0, TAU), bodies: [] };
+    if (W.traps.some(o => Math.abs(o.x - t.x) < CFG.trap.w * 0.6 && Math.abs(o.y - t.y) < CFG.trap.h * 0.6)) return false;
+    W.traps.push(t);
+    return true;
+  }
+  if (m === 'fly') {
+    if (spawnFly(x, y)) { sparks(x, y, [150, 200, 255], 8); return true; }
+    return false;
+  }
+  if (m === 'erase') {
+    for (let i = W.foods.length - 1; i >= 0; i--) if (Math.hypot(W.foods[i].x - x, W.foods[i].y - y) < 34) { W.foods.splice(i, 1); return true; }
+    for (let i = W.traps.length - 1; i >= 0; i--) {
+      const t = W.traps[i];
+      if (x > t.x - 12 && x < t.x + CFG.trap.w + 12 && y > t.y - 12 && y < t.y + CFG.trap.h + 12) {
+        for (const f of W.flies) if (f.trap === t) { f.dead = true; f.onTrap = null; f.deadT = 99; }
+        W.traps.splice(i, 1); return true;
+      }
+    }
+    for (let i = W.flies.length - 1; i >= 0; i--) if (!W.flies[i].dead && Math.hypot(W.flies[i].x - x, W.flies[i].y - y) < 22) { W.flies[i].onTrap = null; W.flies[i].die('removed'); return true; }
+    return false;
+  }
+  return false;
+}
+function spawnFly(x, y, gene) {
+  if (W.flies.filter(f => !f.dead).length >= CFG.pop.max) return null;
+  const f = new Fly(clamp(x, 10, W.w - 10), clamp(y, 10, W.h - 10), gene);
+  W.flies.push(f);
+  return f;
+}
+function resetWorld() {
+  W.foods = []; W.traps = []; W.eggs = []; W.corpses = []; W.flies = [];
+  W.deathsByCause = {};
+  particles.length = 0;
+  W.time = 0; W.deaths = 0; W.births = 0;
+  buildFields();
+  const n = Math.round(CFG.pop.start);
+  for (let i = 0; i < n; i++) spawnFly(rand(40, W.w - 40), rand(40, W.h - 40));
+  W.foods.push({ x: W.w * 0.28, y: W.h * 0.35, ph: 0 });
+  W.foods.push({ x: W.w * 0.7, y: W.h * 0.68, ph: 1.7 });
+}
+
+/* ----------------------------- 主循环 ----------------------------- */
+let last = 0, fps = 60, fpsAcc = 0, fpsN = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (!last) last = ts;
+  let dt = (ts - last) / 1000;
+  last = ts;
+  fpsAcc += dt; fpsN++;
+  if (fpsAcc > 0.5) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+  dt = Math.min(dt, 1 / 30);
+  if (!W.paused) simulate(dt);
+  render(dt);
+  if (W.showBrain) drawBrainPanel();
+  probeAcc += dt;
+  if (probeAcc > 2) { probeAcc = 0; probeRes = reflexProbe(); }
+  uiTick(dt);
+}
+function simulate(dt) {
+  W.time += dt;
+  for (const f of W.foods) fFood.deposit(f.x, f.y, CFG.food.emit * dt, CFG.food.r * 1.3);
+  for (const t of W.traps) fFerm.deposit(t.x + CFG.trap.w / 2, t.y + CFG.trap.h / 2, CFG.trap.emit * dt, Math.max(CFG.trap.w, CFG.trap.h) * 0.8);
+  for (const f of W.flies) if (f.state === 'trapped' && !f.dead) fAlarm.deposit(f.x, f.y, CFG.pher.emit * dt * 0.5, CFG.pher.emitR);
+  fFood.step(dt); fFerm.step(dt); fAlarm.step(dt);
+
+  for (const f of W.flies) f.update(dt);
+  for (let i = W.flies.length - 1; i >= 0; i--) {
+    const f = W.flies[i];
+    if (f.dead && f.deadT > 2.2 && !f.onTrap) {
+      W.corpses.push({ x: f.x, y: f.y, dir: f.dir, t: 0 });
+      if (W.corpses.length > 60) W.corpses.shift();
+      W.flies.splice(i, 1);
+    }
+  }
+  for (let i = W.corpses.length - 1; i >= 0; i--) { W.corpses[i].t += dt; if (W.corpses[i].t > 22) W.corpses.splice(i, 1); }
+  for (let i = W.eggs.length - 1; i >= 0; i--) {
+    const e = W.eggs[i]; e.t += dt;
+    if (e.t >= e.ttl) { const f = spawnFly(e.x, e.y, e.gene); if (f) sparks(e.x, e.y, [255, 255, 200], 6); W.eggs.splice(i, 1); }
+  }
+  updateParticles(dt);
+}
+
+/* ----------------------------- 渲染 ----------------------------- */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W.w = window.innerWidth; W.h = window.innerHeight;
+  cv.width = Math.floor(W.w * DPR); cv.height = Math.floor(W.h * DPR);
+  cv.style.width = W.w + 'px'; cv.style.height = W.h + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildFields();
+}
+window.addEventListener('resize', resize);
+
+function render(dt) {
+  const w = W.w, h = W.h;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const g = ctx.createRadialGradient(w * 0.5, h * 0.45, 40, w * 0.5, h * 0.45, Math.max(w, h) * 0.75);
+  g.addColorStop(0, '#101a22'); g.addColorStop(1, '#070b0f');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  ctx.save();
+  ctx.strokeStyle = '#16222c'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x < w; x += 64) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = 0; y < h; y += 64) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke(); ctx.restore();
+
+  if (W.showField) { fFood.render(ctx); fFerm.render(ctx); fAlarm.render(ctx); }
+  for (const f of W.foods) drawFood(ctx, f);
+  for (const t of W.traps) drawTrap(ctx, t);
+  for (const e of W.eggs) drawEgg(ctx, e);
+  for (const c of W.corpses) drawCorpse(ctx, c);
+  for (const f of W.flies) if (f.dead && !f.onTrap) drawFly(ctx, f);
+  for (const f of W.flies) if (!f.dead) drawFly(ctx, f);
+  for (const p of particles) {
+    const a = 1 - p.t / p.life;
+    ctx.fillStyle = `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${a * 0.8})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.8 * a + 0.4, 0, TAU); ctx.fill();
+  }
+  if (W.paused) {
+    ctx.fillStyle = 'rgba(4,8,12,0.45)'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#cfe6ff'; ctx.font = '600 22px -apple-system,sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('⏸ 已暂停', w / 2, h / 2);
+    ctx.font = '12px -apple-system,sans-serif'; ctx.fillStyle = '#8fa5b8';
+    ctx.fillText('按空格 / 点「暂停」继续', w / 2, h / 2 + 24);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawFood(ctx, f) {
+  const r = CFG.food.r;
+  const g = ctx.createRadialGradient(f.x - r * 0.3, f.y - r * 0.3, 1, f.x, f.y, r);
+  g.addColorStop(0, '#ffd9a0'); g.addColorStop(0.55, '#e39b4e'); g.addColorStop(1, '#8a4b18');
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,170,80,0.5)'; ctx.shadowBlur = 16;
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = 'rgba(90,50,20,0.5)';
+  for (let i = 0; i < 5; i++) {
+    const a = f.ph + i * 1.35, d = r * (0.35 + 0.28 * ((i * 7) % 3) / 2);
+    ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * d, f.y + Math.sin(a) * d, 1.5, 0, TAU); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255,190,110,0.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(f.x, f.y, r + 4 + Math.sin(W.time * 2 + f.ph) * 1.6, 0, TAU); ctx.stroke();
+}
+function drawTrap(ctx, t) {
+  const { w, h } = CFG.trap;
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.fillStyle = 'rgba(196,152,42,0.30)';
+  ctx.strokeStyle = 'rgba(255,214,102,0.85)'; ctx.lineWidth = 1.6;
+  roundRect(ctx, 0, 0, w, h, 6); ctx.fill(); ctx.stroke();
+  ctx.save(); roundRect(ctx, 0, 0, w, h, 6); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,225,140,0.22)'; ctx.lineWidth = 5;
+  for (let i = -h; i < w; i += 11) { ctx.beginPath(); ctx.moveTo(i, h); ctx.lineTo(i + h, 0); ctx.stroke(); }
+  const gg = ctx.createLinearGradient(0, 0, 0, h);
+  gg.addColorStop(0, 'rgba(255,255,255,0.16)'); gg.addColorStop(0.5, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gg; ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,236,170,0.5)';
+  for (let i = 0; i < 6; i++) {
+    const a = t.ph + i * 2.3;
+    ctx.beginPath(); ctx.arc(w / 2 + Math.cos(a) * w * 0.3, h / 2 + Math.sin(a * 1.7) * h * 0.26, 1.2, 0, TAU); ctx.fill();
+  }
+  if (t.bodies) for (const b of t.bodies) {
+    ctx.save(); ctx.translate(b.x - t.x, b.y - t.y); ctx.rotate(b.dir);
+    ctx.fillStyle = 'rgba(60,40,30,0.95)';
+    ctx.beginPath(); ctx.ellipse(0, 0, 5, 2.4, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(120,80,50,0.8)';
+    ctx.beginPath(); ctx.arc(4.5, 0, 1.6, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawEgg(ctx, e) {
+  const t = e.t / e.ttl, pulse = 1 + Math.sin(W.time * 4 + e.ph) * 0.12;
+  ctx.save();
+  ctx.translate(e.x, e.y); ctx.scale(pulse, pulse);
+  ctx.fillStyle = 'rgba(255,255,235,0.94)';
+  ctx.beginPath(); ctx.ellipse(0, 0, 3.4, 1.8, 0.5, 0, TAU); ctx.fill();
+  ctx.globalAlpha = Math.max(0, (t - 0.6) / 0.4) * 0.85;
+  ctx.strokeStyle = '#d8c8a0'; ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) {
+    const a = i / 12 * TAU, rr = 2.6 + Math.sin(a * 3 + W.time * 6) * 0.5;
+    const px = Math.cos(a) * rr, py = Math.sin(a) * rr * 0.55;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function drawCorpse(ctx, c) {
+  const a = clamp(1 - (c.t - 14) / 8, 0, 1) * 0.55;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.translate(c.x, c.y); ctx.rotate(c.dir);
+  ctx.strokeStyle = '#6a5a4a'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(0, 0, 4.5, 1.6, 0, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(-2, 0); ctx.moveTo(-5, 3); ctx.lineTo(-2, 0); ctx.stroke();
+  ctx.restore();
+}
+function drawFly(ctx, f) {
+  const F = CFG.fly, s = F.size * (f.gene.size || 1);
+  const energyR = clamp(f.energy / F.eMax, 0, 1);
+  const hunger = clamp(1 - f.energy / F.hungryAt, 0, 1);
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.dir);
+  if (f.state === 'trapped') {
+    ctx.rotate(Math.sin(f.jitter * 3) * 0.25);
+    ctx.translate(Math.sin(f.jitter * 7) * 0.8, Math.cos(f.jitter * 5) * 0.8);
+  }
+  const flap = Math.sin(f.wingPhase);
+  const wingLen = 6.2 * s, wingW = 2.6 * s;
+  ctx.save();
+  ctx.globalAlpha = f.state === 'trapped' ? 0.5 : 0.62;
+  for (const side of [-1, 1]) {
+    const ghosts = f.state === 'trapped' ? 3 : 1;
+    for (let gi = 0; gi < ghosts; gi++) {
+      const ph = flap + gi * 0.5;
+      ctx.save();
+      ctx.translate(-0.6 * s, side * 1.1 * s);
+      ctx.rotate(side * (0.5 + 0.75 * ph) + gi * 0.12 * side);
+      ctx.fillStyle = `rgba(206,228,244,${gi ? 0.16 : 0.5})`;
+      ctx.beginPath(); ctx.ellipse(wingLen * 0.45, 0, wingLen * 0.55, wingW * 0.5, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+  const bodyG = ctx.createLinearGradient(-5 * s, 0, 5 * s, 0);
+  if (f.state === 'trapped') { bodyG.addColorStop(0, '#4a3324'); bodyG.addColorStop(1, '#c98b3a'); }
+  else if (hunger > 0.55) { bodyG.addColorStop(0, '#3a2c26'); bodyG.addColorStop(1, '#7a4a3a'); }
+  else { bodyG.addColorStop(0, '#2a2f38'); bodyG.addColorStop(1, '#4a5260'); }
+  ctx.fillStyle = bodyG;
+  ctx.beginPath(); ctx.ellipse(-0.4 * s, 0, 4.6 * s, 2.5 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(15,18,22,0.55)'; ctx.lineWidth = 0.7;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo((-3.2 + i * 1.5) * s, -1.9 * s);
+    ctx.lineTo((-3.2 + i * 1.5) * s, 1.9 * s);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#3b4350';
+  ctx.beginPath(); ctx.arc(4.0 * s, 0, 1.9 * s, 0, TAU); ctx.fill();
+  ctx.fillStyle = f.state === 'trapped' ? '#c0392b' : '#a03040';
+  ctx.beginPath(); ctx.arc(4.6 * s, -1.0 * s, 1.05 * s, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(4.6 * s, 1.0 * s, 1.05 * s, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(20,24,30,0.75)'; ctx.lineWidth = 0.7;
+  for (let i = 0; i < 3; i++) {
+    const bx = (-3 + i * 2.4) * s;
+    for (const side of [-1, 1]) {
+      const wig = f.state === 'trapped' ? Math.sin(f.jitter * 9 + i) * 1.2 : 0;
+      ctx.beginPath();
+      ctx.moveTo(bx, side * 2 * s);
+      ctx.lineTo(bx + wig - 0.8 * side, side * (4.4 * s + wig));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  /* 能量条 */
+  const bx = f.x - 7, by = f.y - 10;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(bx, by, 14, 2.2);
+  ctx.fillStyle = energyR > 0.6 ? '#5fe0a8' : energyR > 0.3 ? '#ffd479' : '#ff6f8a';
+  ctx.fillRect(bx, by, 14 * energyR, 2.2);
+
+  if (f.state === 'trapped') {
+    const rr = 7 + Math.sin(W.time * 8 + f.id) * 1.5;
+    ctx.strokeStyle = `rgba(255,90,120,${0.5 + 0.3 * Math.sin(W.time * 9 + f.id)})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(f.x, f.y, rr, 0, TAU); ctx.stroke();
+    if (f.pulse > 0) {
+      ctx.strokeStyle = `rgba(255,80,120,${f.pulse * 0.55})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 8 + (1 - f.pulse) * CFG.pher.emitR, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(f.x, f.y, 4 + (1 - f.pulse) * CFG.pher.emitR * 0.6, 0, TAU); ctx.stroke();
+    }
+  } else if ((f.peakAversion || 0) > 0.35) {
+    ctx.strokeStyle = 'rgba(140,180,255,0.45)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 8.5, -0.5, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(f.x, f.y, 8.5, Math.PI - 0.5, Math.PI + 0.9); ctx.stroke();
+  }
+  if (W.showField) for (const m of f.mem) {
+    ctx.fillStyle = `rgba(140,180,255,${m.s * 0.35})`;
+    ctx.beginPath(); ctx.arc(m.x, m.y, 2 + m.s * 2, 0, TAU); ctx.fill();
+  }
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ----------------------------- 脑活动视图 -----------------------------
+   展示被观察果蝇的 66 个神经元（按 Sensory/Drives/Central/Motor 分组）：
+   节点亮度 = 放电率，颜色 = 兴奋(青绿)/抑制(品红)，KC→MBON 的可塑突触
+   按其权重着色（红=厌恶性已增强，蓝=食欲性已增强）。 */
+const LAY = (() => {
+  const colOf = {
+    ORN_food: 0, ORN_ferm: 0, ORN_alarm: 0, GRN_sugar: 0, mechano: 0, visual: 0,
+    Hugin: 1, NPF: 1, FB_energy: 1,
+    LN_al: 2, PN: 2, LHON: 2, KC: 2, APL: 2, MBON_app: 2, MBON_av: 2,
+    DAN_PPL1: 3, DAN_PAM: 3, ring_EB: 3, PFN: 3, DN_escape: 3, DN_walk: 3,
+    MN_feed: 4, MN_walk: 4, MN_steerL: 4, MN_steerR: 4, MN_oviposit: 4
+  };
+  const COLX = [34, 100, 168, 232, 296];
+  const byCol = [[], [], [], [], []];
+  for (let i = 0; i < NET.n; i++) byCol[colOf[NET.names[i]]].push(i);
+  const pos = new Array(NET.n);
+  for (let c = 0; c < 5; c++) {
+    const arr = byCol[c], n = arr.length;
+    for (let k = 0; k < n; k++) {
+      const y = 50 + (n === 1 ? 108 : k * (216 / (n - 1)));   // 节点区 50~266，下方留给读出条
+      pos[arr[k]] = { x: COLX[c], y };
+    }
+  }
+  return pos;
+})();
+const COLN = ['Sensory', 'Drives', 'Central', 'Central', 'Motor'];
+
+const bcv = document.getElementById('braincv');
+const bctx = bcv ? bcv.getContext('2d') : null;
+let bDPR = 1;
+if (bcv) {
+  bDPR = Math.min(window.devicePixelRatio || 1, 2);
+  const Wp = 330, Hp = 372;
+  bcv.width = Wp * bDPR; bcv.height = Hp * bDPR;
+  bcv.style.width = Wp + 'px'; bcv.style.height = Hp + 'px';
+}
+function inspectedFly() {
+  if (W.inspect && W.inspect.dead === false) return W.inspect;
+  let best = null, bi = 0;
+  for (const f of W.flies) {
+    if (f.dead) continue;
+    const li = f.brain.learnIndex();
+    if (!best || li > bi) { best = f; bi = li; }
+  }
+  return best;
+}
+function drawBrainPanel() {
+  if (!bctx) return;
+  const f = inspectedFly();
+  const Wp = 330, Hp = 372;
+  bctx.setTransform(bDPR, 0, 0, bDPR, 0, 0);
+  bctx.clearRect(0, 0, Wp, Hp);
+  bctx.fillStyle = 'rgba(9,14,19,0.93)';
+  roundRect(bctx, 0, 0, Wp, Hp, 12); bctx.fill();
+  bctx.strokeStyle = '#1d2833'; bctx.lineWidth = 1; bctx.stroke();
+  bctx.fillStyle = '#8fa5b8'; bctx.font = '10px -apple-system,sans-serif';
+  const heads = ['Sensory', 'Drives', 'Central', 'Central', 'Motor'];
+  const hx = [34, 100, 168, 232, 296];
+  for (let i = 0; i < 5; i++) {
+    bctx.textAlign = 'center';
+    bctx.fillText(heads[i], hx[i], 42);
+  }
+  bctx.textAlign = 'left';
+  if (!f) { bctx.fillText('（暂无果蝇）', 14, 70); return; }
+
+  /* 边（先画，避免压住节点） */
+  for (let e = 0; e < NET.E; e++) {
+    const a = LAY[NET.S[e]], b = LAY[NET.D[e]];
+    const pl = NET.PL[e];
+    const wAbs = Math.abs(f.brain.w[e]);
+    if (pl) {
+      const rel = f.brain.w[e] / f.brain.w0[e];
+      if (rel > 1.05) {
+        bctx.strokeStyle = pl === 1 ? `rgba(255,90,110,${clamp((rel - 1) * 1.4, 0.15, 0.95)})`
+          : `rgba(90,180,255,${clamp((rel - 1) * 1.4, 0.15, 0.95)})`;
+        bctx.lineWidth = 1.6;
+        bctx.beginPath(); bctx.moveTo(a.x, a.y); bctx.lineTo(b.x, b.y); bctx.stroke();
+      }
+      continue;
+    }
+    bctx.strokeStyle = `rgba(120,150,180,${clamp(wAbs * 0.05, 0.03, 0.3)})`;
+    bctx.lineWidth = 0.6;
+    bctx.beginPath(); bctx.moveTo(a.x, a.y); bctx.lineTo(b.x, b.y); bctx.stroke();
+  }
+  /* 节点 */
+  for (let i = 0; i < NET.n; i++) {
+    const p = LAY[i], r = f.brain.r[i];
+    const act = clamp(r / 22, 0, 1);
+    const exc = NET.sig[i] > 0;
+    if (act > 0.02) {
+      bctx.fillStyle = exc ? `rgba(90,225,175,${act * 0.35})` : `rgba(255,110,150,${act * 0.35})`;
+      bctx.beginPath(); bctx.arc(p.x, p.y, 3 + act * 7, 0, TAU); bctx.fill();
+    }
+    bctx.fillStyle = exc ? `rgba(110,240,190,${0.35 + act * 0.65})` : `rgba(255,120,160,${0.35 + act * 0.65})`;
+    bctx.beginPath(); bctx.arc(p.x, p.y, 3.1, 0, TAU); bctx.fill();
+  }
+  /* 读出条 */
+  const bar = (label, val, max, color, y, unit) => {
+    bctx.fillStyle = '#7e8fa0'; bctx.font = '9.5px -apple-system,sans-serif';
+    bctx.fillText(label, 12, y - 2);
+    bctx.textAlign = 'right';
+    bctx.fillStyle = color;
+    bctx.fillText(unit ? val.toFixed(1) + unit : val.toFixed(0), Wp - 12, y - 2);
+    bctx.textAlign = 'left';
+    bctx.fillStyle = 'rgba(255,255,255,0.07)';
+    bctx.fillRect(12, y, Wp - 24, 4);
+    bctx.fillStyle = color;
+    bctx.fillRect(12, y, (Wp - 24) * clamp(val / max, 0, 1), 4);
+  };
+  let y0 = 372 - 96;
+  const mbAv = f.brain.learnIndex();
+  bar('MBON_av 厌恶性权重（学到的"粘板危险"）', (mbAv - 1) / (CFG.brain.wMax - 1) * 100, 100, '#ff7a92', y0, '%');
+  bar('MN_walk 行进驱动', f.brain.rate('MN_walk'), 40, '#6fe0b0', y0 + 20, 'Hz');
+  bar('MN_feed 喙伸展（取食）', f.brain.rate('MN_feed'), 40, '#ffd479', y0 + 40, 'Hz');
+  bar('DN_escape 逃逸', f.brain.rate('DN_escape'), 40, '#ff9a6f', y0 + 60, 'Hz');
+  bctx.fillStyle = '#cfe0ee'; bctx.font = '11px -apple-system,sans-serif';
+  bctx.fillText(`观察对象：果蝇 #${f.id}`, 12, 16);
+  bctx.textAlign = 'right';
+  bctx.fillStyle = '#8fa5b8';
+  bctx.fillText(`全脑 ${f.brain.popRateSlow.toFixed(2)} Hz · ${NET.n} 神经元 / ${NET.E} 突触`, Wp - 12, 16);
+  bctx.fillStyle = '#8fa5b8'; bctx.font = '10px -apple-system,sans-serif';
+  bctx.fillText(`状态 ${MODE_CN[f.state] || f.state} · 能量 ${f.energy.toFixed(0)} · 饥饿 ${(f.hunger * 100 || 0).toFixed(0)}%`, Wp - 12, 30);
+  bctx.textAlign = 'left';
+}
+
+/* ----------------------------- UI：统计 ----------------------------- */
+const statsEl = document.getElementById('stats');
+let statsAcc = 0;
+function uiTick(dt) {
+  statsAcc += dt || 0.016;
+  if (statsAcc < 0.25) return;
+  statsAcc = 0;
+  const alive = W.flies.filter(f => !f.dead);
+  const stuck = alive.filter(f => f.state === 'trapped').length;
+  const hungry = alive.filter(f => f.energy < CFG.fly.hungryAt).length;
+  const feeding = alive.filter(f => f.eating).length;
+  const learned = alive.filter(f => (f.peakAversion || 0) > 0.35).length;
+  const avgE = alive.length ? alive.reduce((a, f) => a + f.energy, 0) / alive.length : 0;
+  const brainRate = alive.length ? alive.reduce((a, f) => a + f.brain.popRateSlow, 0) / alive.length : 0;
+  statsEl.innerHTML =
+    `<div><span class="k">果蝇</span> <b class="ok">${alive.length}</b> <span class="k">/ 上限 ${CFG.pop.max}</span></div>` +
+    `<div><span class="k">被粘住</span> <b class="bad">${stuck}</b>` +
+    ` <span class="k">｜饥饿</span> <b class="hi">${hungry}</b>` +
+    ` <span class="k">｜取食中</span> <b>${feeding}</b></div>` +
+    `<div><span class="k">食物</span> <b>${W.foods.length}</b>` +
+    ` <span class="k">｜粘板</span> <b>${W.traps.length}</b>` +
+    ` <span class="k">｜卵</span> <b>${W.eggs.length}</b></div>` +
+    `<div><span class="k">出生</span> <b>${W.births}</b> <span class="k">｜死亡</span> <b class="bad">${W.deaths}</b>` +
+    ` <span class="k">｜平均能量</span> <b>${avgE.toFixed(0)}</b></div>` +
+    `<div><span class="k">全脑放电率</span> <b>${brainRate.toFixed(2)} Hz</b>` +
+    ` <span class="k">｜已学习</span> <b class="hi">${learned}</b></div>` +
+    `<div><span class="k">反射自检</span> ${reflexLine()}</div>` +
+    `<div><span class="k">时间</span> <b>${W.time.toFixed(0)}s</b> <span class="k">｜FPS</span> <b>${fps.toFixed(0)}</b>` +
+    ` <span class="k">｜dpr ${DPR}</span></div>`;
+}
+
+/* ----------------------------- UI：参数面板 ----------------------------- */
+const PARAM_SPEC = [
+  ['g', '脑 / 网络（flybench 口径）'],
+  ['brain.gain', '全局增益 gain（0.40–0.45 为反射通过区）', 0.1, 1.2, 0.01],
+  ['brain.wSyn', '单突触权重基准 w_syn (mV)', 0.05, 1, 0.005],
+  ['brain.lr', '多巴胺学习率（PPL1→MB 权重）', 0, 3, 0.05],
+  ['brain.noise', '自发噪声强度', 0, 0.6, 0.01],
+  ['brain.wMax', '可塑权重上限（倍数）', 1.2, 6, 0.1],
+  ['brain.dt', '脑步长 (s)', 0.002, 0.03, 0.001],
+  ['brain.stepsPerFrame', '每帧脑步数', 1, 5, 1],
+  ['g', '运动 / 飞行'],
+  ['fly.cruise', '巡航速度 (px/s)', 10, 160, 1],
+  ['fly.surge', '气味冲刺速度 (px/s)', 20, 300, 1],
+  ['fly.turnRate', '转向速率 (rad/s)', 0.5, 12, 0.1],
+  ['fly.noise', '随机游走强度 (rad/s)', 0, 8, 0.1],
+  ['fly.cast', '气味丢失时搜索幅度', 0, 12, 0.1],
+  ['fly.size', '体型缩放', 0.5, 2, 0.05],
+  ['g', '能量 / 饥饿驱动'],
+  ['fly.eMax', '能量上限', 60, 300, 5],
+  ['fly.drainBase', '基础代谢 (能量/s)', 0, 4, 0.05],
+  ['fly.drainMove', '运动代谢系数', 0, 3, 0.05],
+  ['fly.hungryAt', '饥饿阈值 (能量)', 10, 120, 1],
+  ['fly.desperateAt', '极饿阈值 (冒险)', 0, 80, 1],
+  ['food.feedRate', '进食回复 (能量/s)', 0, 80, 1],
+  ['g', '嗅觉 / 信息素'],
+  ['fly.seekGain', '食物气味吸引强度', 0, 4, 0.05],
+  ['fly.fermentGain', '发酵气味吸引强度(粘板诱惑)', 0, 4, 0.05],
+  ['fly.alarmGain', '报警信息素回避强度', 0, 6, 0.05],
+  ['pher.emit', '信息素释放强度', 0, 8, 0.1],
+  ['pher.emitDur', '信息素释放时长 (s)', 0, 60, 1],
+  ['env.alarmTau', '信息素残留时间 (s)', 1, 30, 0.5],
+  ['env.visionRange', '近距趋源范围 (px)', 0, 220, 5],
+  ['g', '行为读出阈值（运动神经元 → 行为）'],
+  ['fly.feedThr', '取食阈值 MN9 (Hz)', 0, 30, 0.5],
+  ['fly.escapeThr', '逃逸阈值 DN_escape (Hz)', 0, 40, 1],
+  ['fly.ovipThr', '产卵阈值 MN_oviposit (Hz)', 0, 30, 0.5],
+  ['fly.steerGain', '转向偏置增益', 0, 40, 1],
+  ['g', '繁殖 / 种群'],
+  ['fly.reproChance', '繁殖率系数', 0, 1, 0.01],
+  ['fly.reproEnergy', '繁殖所需能量', 50, 145, 1],
+  ['fly.reproCost', '繁殖消耗能量', 5, 100, 1],
+  ['fly.feedNeed', '产卵前需累计摄食 (s)', 0, 30, 0.5],
+  ['fly.reproCool', '繁殖冷却 (s)', 0.5, 60, 0.5],
+  ['fly.eggTime', '卵孵化时间 (s)', 2, 40, 1],
+  ['fly.lifespan', '寿命 (s)', 20, 600, 5],
+  ['pop.start', '初始果蝇数(重置后生效)', 0, 80, 1],
+  ['pop.max', '种群上限', 10, 400, 5],
+  ['g', '粘板'],
+  ['trap.emit', '粘板发酵气味强度', 0, 8, 0.1],
+  ['trap.learnR', '危险学习半径 (px)', 0, 200, 5],
+  ['pher.drain', '被粘住能量流失 (能量/s)', 0, 10, 0.1],
+  ['pher.escape', '挣脱概率 (每秒)', 0, 0.2, 0.002]
+];
+const slidersEl = document.getElementById('sliders');
+const fmt = v => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
+function buildSliders() {
+  slidersEl.innerHTML = '';
+  for (const spec of PARAM_SPEC) {
+    if (spec[0] === 'g') {
+      const h = document.createElement('h3');
+      h.textContent = spec[1]; h.style.marginTop = '12px';
+      slidersEl.appendChild(h);
+      continue;
+    }
+    const [path, label, min, max, step] = spec;
+    const row = document.createElement('div');
+    row.className = 'row';
+    const cur = getPath(CFG, path);
+    row.innerHTML = `<label>${label}<span id="v_${path}">${fmt(cur)}</span></label>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${cur}">`;
+    const inp = row.querySelector('input');
+    inp.addEventListener('input', () => {
+      const v = parseFloat(inp.value);
+      setPath(CFG, path, v);
+      document.getElementById('v_' + path).textContent = fmt(v);
+      if (path === 'brain.gain' || path === 'brain.wSyn') retuneNet();
+      if (path === 'fly.size' || path === 'env.visionRange') { /* 即时生效 */ }
+    });
+    slidersEl.appendChild(row);
+  }
+}
+/* 改变全局 gain / w_syn → 重编译连接拓扑并同步各脑权重（可塑性记忆会重置） */
+function retuneNet() {
+  NET = compileNet();
+  for (const f of W.flies) {
+    f.brain.w0 = NET.W0.slice();
+    f.brain.w = NET.W0.slice();
+    const g = f.gene.brainGain;
+    for (let e = 0; e < NET.E; e++) f.brain.w[e] *= g;
+  }
+}
+
+/* ----------------------------- UI：按钮 ----------------------------- */
+const modeBtns = [...document.querySelectorAll('[data-mode]')];
+function setMode(m) {
+  W.mode = m;
+  for (const b of modeBtns) b.classList.toggle('on', b.dataset.mode === m);
+  hint(m === 'food' ? '点击/拖动放置食物（果蝇会被气味吸引，落到食物上才会取食）'
+    : m === 'trap' ? '放置粘板：发酵气味会吸引果蝇；靠近会被粘住——它们会把这段经历学进蘑菇体'
+      : m === 'fly' ? '点击投放果蝇'
+        : '点击/拖动清除食物、粘板或果蝇');
+}
+for (const b of modeBtns) b.addEventListener('click', () => setMode(b.dataset.mode));
+const btnPause = document.getElementById('btnPause');
+btnPause.addEventListener('click', () => {
+  W.paused = !W.paused;
+  btnPause.textContent = W.paused ? '▶ 继续' : '⏸ 暂停';
+  btnPause.classList.toggle('on', W.paused);
+});
+const btnField = document.getElementById('btnField');
+btnField.addEventListener('click', () => {
+  W.showField = !W.showField;
+  btnField.classList.toggle('on', W.showField);
+});
+const btnBrain = document.getElementById('btnBrain');
+btnBrain.addEventListener('click', () => {
+  W.showBrain = !W.showBrain;
+  btnBrain.classList.toggle('on', W.showBrain);
+  document.getElementById('brainwrap').style.display = W.showBrain ? 'block' : 'none';
+  document.body.classList.toggle('brainon', W.showBrain);
+});
+const btnParam = document.getElementById('btnParam');
+btnParam.addEventListener('click', () => {
+  document.getElementById('panel').classList.toggle('show');
+  btnParam.classList.toggle('on');
+});
+document.getElementById('btnReset').addEventListener('click', () => resetWorld());
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === '1') setMode('food');
+  else if (k === '2') setMode('trap');
+  else if (k === '3') setMode('fly');
+  else if (k === '4') setMode('erase');
+  else if (k === 'd') btnField.click();
+  else if (k === 'b') btnBrain.click();
+  else if (k === 'r') resetWorld();
+  else if (e.code === 'Space') { e.preventDefault(); btnPause.click(); }
+});
+
+/* ----------------------------- 交互 ----------------------------- */
+let down = false, lastP = { x: 0, y: 0 };
+function pos(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  down = true;
+  const p = pos(e); lastP = p;
+  if (place(p.x, p.y) && W.mode === 'food') sparks(p.x, p.y, [255, 200, 120], 6);
+  hideHint();
+});
+cv.addEventListener('pointermove', e => {
+  const p = pos(e);
+  if (down) {
+    if (Math.hypot(p.x - lastP.x, p.y - lastP.y) > 22) { place(p.x, p.y); lastP = p; }
+  } else {
+    const f = nearestFly(p.x, p.y);
+    W.inspect = f;
+    if (f) showTipAt(f, e.clientX, e.clientY); else hideTip();
+  }
+});
+window.addEventListener('pointerup', () => { down = false; });
+cv.addEventListener('pointerleave', () => { down = false; W.inspect = null; hideTip(); });
+
+const tipEl = document.getElementById('tip');
+function nearestFly(x, y) {
+  let best = null, bd = 24;
+  for (const f of W.flies) {
+    if (f.dead) continue;
+    const d = Math.hypot(f.x - x, f.y - y);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+const MODE_CN = { cruise: '巡航', seek: '追踪气味', feed: '取食', cast: 'zig-zag 搜索', alarm: '惊逃/逃逸', trapped: '被粘住', dead: '死亡' };
+let escapeCount = 0, escapeWindow = 0;
+function showTipAt(f, cx, cy) {
+  const hunger = clamp(1 - f.energy / CFG.fly.hungryAt, 0, 1);
+  const top = f.brain.topTypes(4).filter(t => t[1] > 0.5);
+  const notes = [];
+  if (f.energy < CFG.fly.desperateAt) notes.push('极饿：Hugin 抑制 MBON_av，冒险觅食');
+  else if (hunger > 0.4) notes.push('Hugin（SEZ）饥饿驱动↑');
+  if (f.fermSat > 0.3) notes.push('AL 闻到发酵气味');
+  if (f.odSat > 0.3) notes.push('AL 闻到食物气味');
+  if ((f.peakAversion || 0) > 0.35) notes.push('MB 记忆已写入：回避粘板');
+  if (f.alSat > 0.3) notes.push('报警信息素 → 回避 + 逃逸通路');
+  if (f.brain.rate('DAN_PPL1') > 1) notes.push('PPL1 多巴胺：惩罚信号发放中');
+  tipEl.innerHTML =
+    `<b>果蝇 #${f.id}</b> · ${MODE_CN[f.state] || f.state}<br>` +
+    `能量 ${f.energy.toFixed(0)}/${CFG.fly.eMax} · 饥饿 ${(hunger * 100).toFixed(0)}% · 年龄 ${f.age.toFixed(1)}s<br>` +
+    `脑：${f.brain.popRateSlow.toFixed(2)} Hz ｜ MBON_av 权重 ×${f.brain.learnIndex().toFixed(2)}<br>` +
+    `读出 MN9 ${f.brain.rate('MN_feed').toFixed(1)}Hz · MN_walk ${f.brain.rate('MN_walk').toFixed(1)}Hz · GF ${f.brain.rate('DN_escape').toFixed(1)}Hz<br>` +
+    (top.length ? `<span style="color:#9fe8c8">活跃：${top.map(t => t[0] + ' ' + t[1].toFixed(0) + 'Hz').join('、')}</span><br>` : '') +
+    (notes.length ? `<span style="color:#ffd479">${notes.join('；')}</span>` : '');
+  tipEl.style.display = 'block';
+  tipEl.style.left = clamp(cx + 14, 6, window.innerWidth - 224) + 'px';
+  tipEl.style.top = clamp(cy + 14, 46, window.innerHeight - 130) + 'px';
+}
+function hideTip() { tipEl.style.display = 'none'; }
+let hintHidden = false;
+function hint(t) {
+  const el = document.getElementById('hint');
+  el.textContent = t; el.style.opacity = 0.9;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = 0; }, 4000);
+}
+function hideHint() { document.getElementById('hint').style.opacity = 0; }
+setTimeout(hideHint, 9000);
+
+/* ----------------------------- 启动 ----------------------------- */
+resize();
+buildSliders();
+resetWorld();
+setMode('food');
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   flybench 式反射自检：用一个"探针脑"（不参与游戏）在纯刺激条件下测读出，
+   逐项对照社区公布的反射判据（阈值取自 flybench 的 reference LIF 口径）。
+   ========================================================================== */
+let probeBrain = null, probeRes = null, probeAcc = 99;
+function reflexProbe() {
+  if (!probeBrain) probeBrain = new Brain({ speed: 1, sense: 1, brainGain: 1, learn: 1, size: 1, noise: 1 });
+  const dt = CFG.brain.dt, steps = 30;
+  const set = (nm, v) => { const c = NET.ct[nm]; for (let i = 0; i < c.n; i++) probeBrain.ext[c.start + i] = v; };
+  const run = (setup) => {
+    const pb = probeBrain;
+    pb.ext.fill(0); pb.v.fill(0); pb.I.fill(0); pb.r.fill(0); pb.refr.fill(0); pb.kcTrace.fill(0);
+    pb.w.set(pb.w0);
+    if (setup) setup();
+    let acc = 0;
+    for (let i = 0; i < steps; i++) { pb.step(dt); if (i >= steps - 10) acc += pb.popRate; }
+    return acc / 10;
+  };
+  const r0 = { base: run(null) };
+  r0.sugarFeed = run(() => set('GRN_sugar', 2.4)) >= 0 ? probeBrain.rate('MN_feed') : 0;
+  r0.bitterFeed = run(() => { set('GRN_sugar', 2.4); set('ORN_alarm', 2.25); }) >= 0 ? probeBrain.rate('MN_feed') : 0;
+  r0.loomGF = run(() => set('visual', 2.1)) >= 0 ? probeBrain.rate('DN_escape') : 0;
+  r0.odorWalk = run(() => set('ORN_food', 2.45)) >= 0 ? probeBrain.rate('MN_walk') : 0;
+  r0.checks = [
+    ['静默→静默', r0.base < 0.5, r0.base.toFixed(2) + 'Hz'],
+    ['糖→MN9', r0.sugarFeed > 5, r0.sugarFeed.toFixed(0) + 'Hz'],
+    ['警戒抑制糖', r0.bitterFeed < Math.max(5, r0.sugarFeed * 0.5), r0.bitterFeed.toFixed(0) + 'Hz'],
+    ['突现→巨纤维', r0.loomGF > 10, r0.loomGF.toFixed(0) + 'Hz'],
+    ['气味→行进', r0.odorWalk > 5, r0.odorWalk.toFixed(0) + 'Hz']
+  ];
+  return r0;
+}
+function reflexLine() {
+  if (!probeRes) return '<span class="k">测量中…</span>';
+  return probeRes.checks.map(c =>
+    `<b style="color:${c[1] ? '#6fe0b0' : '#ff8fa3'}">${c[1] ? '✓' : '✗'}${c[0]}</b>`).join(' ');
+}
+
+</script>
+</body>
+</html>

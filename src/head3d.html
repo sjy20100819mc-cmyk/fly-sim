@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#070b10">
+<title>果蝇 3D 模拟器 · FlyWire FAFB v783 连接组约简脉冲脑</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#070b10;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;color:#dfe7ee}
+  #cv{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #cv:active{cursor:grabbing}
+
+  #bar{position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;gap:6px;
+    padding:calc(7px + env(safe-area-inset-top)) 7px 7px;z-index:5;
+    background:linear-gradient(#070b10f2,#070b10cc 70%,#070b1000)}
+  .grp{display:flex;gap:6px;flex-wrap:wrap}
+  .grp:last-child{margin-left:auto}
+  button{appearance:none;border:1px solid #26323d;background:#121a22e6;color:#c8d6e2;
+    font-size:12.5px;padding:8px 11px;border-radius:9px;font-family:inherit;line-height:1;
+    transition:.14s;white-space:nowrap}
+  button:active{transform:scale(.95)}
+  button.on{background:#1d6b52;border-color:#2ea67c;color:#d8fff0;box-shadow:0 0 0 1px #2ea67c inset}
+  button.warn.on{background:#7a3a12;border-color:#e08b3a;color:#ffe6c8;box-shadow:0 0 0 1px #e08b3a inset}
+  button.flym.on{background:#3a2a6b;border-color:#8f7ce0;color:#e8e0ff;box-shadow:0 0 0 1px #8f7ce0 inset}
+  button.erase.on{background:#5a2030;border-color:#d9556f;color:#ffdfe5;box-shadow:0 0 0 1px #d9556f inset}
+  button.brain.on{background:#123f52;border-color:#3fb6d8;color:#d8f6ff;box-shadow:0 0 0 1px #3fb6d8 inset}
+
+  #stats{position:absolute;left:7px;bottom:calc(7px + env(safe-area-inset-bottom));z-index:5;background:#0b1117d9;
+    border:1px solid #1d2833;border-radius:11px;padding:8px 10px;font-size:11.5px;
+    line-height:1.65;backdrop-filter:blur(6px);max-width:min(300px,74vw)}
+  #stats b{color:#fff;font-weight:600}
+  #stats .k{color:#7e8fa0}
+  #stats .hi{color:#ffd479}
+  #stats .bad{color:#ff8fa3}
+  #stats .ok{color:#6fe0b0}
+  body.brainon #stats{display:none}
+  #brainwrap{position:absolute;right:6px;bottom:calc(6px + env(safe-area-inset-bottom));z-index:4;display:none}
+  #braincv{display:block;border-radius:12px;box-shadow:0 8px 30px #000a}
+  #brainlegend{position:absolute;left:10px;right:10px;bottom:6px;font-size:9.5px;color:#7e8fa0;
+    line-height:1.4;pointer-events:none;text-shadow:0 1px 3px #000}
+
+  #panel{position:absolute;right:7px;top:calc(56px + env(safe-area-inset-top));bottom:7px;width:min(320px,88vw);z-index:6;
+    background:#0b1117f7;border:1px solid #1d2833;border-radius:12px;padding:10px;
+    overflow-y:auto;display:none;backdrop-filter:blur(8px);-webkit-overflow-scrolling:touch}
+  #panel.show{display:block}
+  #panel h3{margin:2px 0 8px;font-size:12px;color:#8fa5b8;font-weight:600;letter-spacing:.4px}
+  .row{margin-bottom:9px}
+  .row label{display:flex;justify-content:space-between;font-size:11px;color:#9fb0c0;margin-bottom:3px;gap:8px}
+  .row label span{color:#ffd479;font-variant-numeric:tabular-nums;white-space:nowrap}
+  input[type=range]{width:100%;height:20px;background:transparent;-webkit-appearance:none}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;background:#233240;border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
+    border-radius:50%;background:#4bd39c;border:2px solid #0b1117}
+  .mini{font-size:10.5px;color:#67788a;line-height:1.55;margin:8px 0 2px}
+  hr{border:0;border-top:1px solid #1b2632;margin:10px 0}
+
+  #tip{position:absolute;z-index:7;pointer-events:none;background:#0b1117f2;border:1px solid #2b3a48;
+    border-radius:9px;padding:6px 8px;font-size:10.5px;line-height:1.55;color:#cfdae4;display:none;
+    max-width:224px;backdrop-filter:blur(4px)}
+  #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));
+    z-index:4;font-size:11.5px;color:#9fb6c8;text-align:center;pointer-events:none;transition:opacity .6s;
+    opacity:.9;max-width:90vw;text-shadow:0 1px 4px #000}
+  body.brainon #hint{display:none}
+
+  #snapview{position:absolute;inset:0;z-index:10;display:none;flex-direction:column;align-items:center;
+    justify-content:center;background:#000000e0;gap:12px;padding:14px}
+  #snapview img{max-width:96%;max-height:78%;border-radius:12px;box-shadow:0 12px 44px #000}
+  #snapview span{font-size:11.5px;color:#9fb6c8}
+  #glfail,#paused{position:absolute;inset:0;z-index:9;display:none;align-items:center;justify-content:center;
+    background:#070b10ee;text-align:center;padding:24px;font-size:13px;line-height:1.8;color:#cfe0ee;flex-direction:column}
+  #glfail b,#paused b{font-size:17px;color:#fff;margin-bottom:8px}
+  #paused{z-index:8;background:#070b10aa;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<header id="bar">
+  <div class="grp">
+    <button data-mode="food" class="on">🍎 食物</button>
+    <button data-mode="trap" class="warn">🟨 粘板</button>
+    <button data-mode="fly" class="flym">🪰 投蝇</button>
+    <button data-mode="erase" class="erase">🧽 清除</button>
+  </div>
+  <div class="grp">
+    <button id="btnView" class="brain">🎥 视角</button>
+    <button id="btnBrain" class="brain">🧠 脑活动</button>
+    <button id="btnField">👃 气味场</button>
+    <button id="btnSnap">📷 快照</button>
+    <button id="btnPause">⏸ 暂停</button>
+    <button id="btnParam">⚙︎ 参数</button>
+    <button id="btnReset">↺ 重置</button>
+  </div>
+</header>
+
+<div id="stats"></div>
+<div id="brainwrap"><canvas id="braincv"></canvas>
+  <div id="brainlegend">节点=神经元（绿=兴奋/胆碱能，红=抑制/GABA·谷氨酸），亮度=放电率；
+    加粗的红/蓝线=已被多巴胺可塑性增强的 KC→MBON 突触（红=学会的危险）</div>
+</div>
+<aside id="panel">
+  <h3>参数调节（实时生效）</h3>
+  <div id="sliders"></div>
+  <hr>
+  <div class="mini">
+    <b>行为内核</b>：每只果蝇一副 71 神经元的 LIF 脉冲网络，细胞类型取自 FlyWire FAFB v783 注释，
+    w_syn=0.275、全局 gain≈0.42、≥5 突触才建边（与 flybench / Shiu 2024 口径一致），
+    含放电频率适应与多巴胺门控可塑性；中枢脑（MB 蘑菇体 / LH 侧角 / CX 中央复合体 / SEZ）决定动机与价值，
+    导航反射由 VNC 局部回路补全。<b>3D 层</b>用 three.js 实例化渲染，气味以叠加云层显示。<br><br>
+    操作：拖动旋转 · 双指缩放 · 轻点地面放置 · 轻点果蝇追踪观察<br>
+    快捷键：1食物 2粘板 3投蝇 4清除 · B脑活动 · D气味场 · V视角 · F追踪 · 空格暂停 · R重置
+  </div>
+</aside>
+<div id="tip"></div>
+<div id="snapview"><img alt="快照"><span>长按图片可保存 / 分享到 QQ ｜ 点任意处关闭</span></div>
+<div id="hint">拖动可旋转视角 · 轻点地面放食物/粘板 · 轻点果蝇看它此刻在想什么</div>
+
+<div id="paused"><b>⏸ 已暂停</b><span>点「暂停」或按空格继续</span></div>
+<div id="glfail"><b>此浏览器未启用 WebGL</b>
+  <span>3D 渲染需要 WebGL。可尝试：① 用系统浏览器（Safari / Chrome）打开本文件；
+  ② 在 QQ 里点右上角「⋯」→「在浏览器打开」。<br>行为内核（脉冲脑）不受影响，换浏览器即可正常运行。</span></div>
+</body>
+</html>
