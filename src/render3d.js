@@ -140,6 +140,7 @@ function initGL() {
   buildFoodMeshes();
   buildTrapMeshes();
   buildEggMeshes();
+  buildStains();
   buildPulsePool();
   resizeGL();
   window.addEventListener('resize', resizeGL);
@@ -193,7 +194,7 @@ function buildFoodMeshes() {
   const MAXF = 40, MAXB = 400;
   R.foodBlob = new THREE.InstancedMesh(
     new THREE.SphereGeometry(1, 9, 7),
-    new THREE.MeshLambertMaterial({ color: 0xffd79a, emissive: 0xd07a20 }), MAXB);
+    new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x3a2408 }), MAXB);
   R.foodBlob.frustumCulled = false; R.foodBlob.count = 0; scene.add(R.foodBlob);
   R.foodGlow = new THREE.InstancedMesh(
     new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
@@ -216,6 +217,16 @@ function buildEggMeshes() {
   R.egg = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 7, 5),
     new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xb0a888 }), 160);
   R.egg.frustumCulled = false; R.egg.count = 0; scene.add(R.egg);
+}
+function buildStains() {
+  R.stainPool = [];
+  const tex = radialTex(64, 'rgba(60,44,28,0.85)', 'rgba(42,32,22,0.5)', 0.65);
+  const geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+  for (let i = 0; i < 24; i++) {
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false });
+    const m = new THREE.Mesh(geo, mat); m.visible = false; scene.add(m);
+    R.stainPool.push({ mesh: m, mat: mat });
+  }
 }
 function buildPulsePool() {
   R.pulses = [];
@@ -346,26 +357,50 @@ function updateFlyInstances() {
   }
 }
 function updatePropInstances() {
-  /* 食物 */
+  /* 食物：半径与气味一起随剩余量缩小，颜色由鲜亮变干枯，耗尽即消失（→残迹） */
   let fb = 0;
-  for (const f of W.foods) {
+  const fr = f => CFG.food.r * (CFG.food.minR + (1 - CFG.food.minR) * clamp(f.e / (f.e0 || 1), 0, 1));
+  const fcol = new THREE.Color();
+  R.foodGlow.count = W.foods.length;
+  for (let fi = 0; fi < W.foods.length; fi++) {
+    const f = W.foods[fi];
     const [wx, wz] = px2world(f.x, f.y);
-    R.foodGlow.count = W.foods.length;
+    const er = clamp(f.e / (f.e0 || 1), 0, 1);
+    const rr = fr(f);
     dummy.position.set(wx, 0.5, wz); dummy.rotation.set(0, 0, 0);
     const pulse = 1 + Math.sin(W.time * 2 + f.ph) * 0.06;
-    dummy.scale.set(CFG.food.r * 3.6 * pulse, 1, CFG.food.r * 3.6 * pulse);
-    dummy.updateMatrix(); R.foodGlow.setMatrixAt(W.foods.indexOf(f), dummy.matrix);
+    dummy.scale.set(rr * 3.6 * pulse, 1, rr * 3.6 * pulse);
+    dummy.updateMatrix(); R.foodGlow.setMatrixAt(fi, dummy.matrix);
+    fcol.setRGB(0.10 + 0.45 * er, 0.08 + 0.24 * er, 0.06 + 0.03 * er);   // 鲜橙 → 干枯棕
     for (const s of R.foodSeeds) {
       if (fb >= 400) break;
-      dummy.position.set(wx + s[0] * CFG.food.r, s[2] * 2.2, wz + s[1] * CFG.food.r);
+      dummy.position.set(wx + s[0] * rr, s[2] * 2.2 * (0.5 + 0.5 * er), wz + s[1] * rr);
       dummy.rotation.set(s[0], s[1], 0);
-      const sc = s[3];
+      const sc = s[3] * (CFG.food.minR + (1 - CFG.food.minR) * er);
       dummy.scale.set(sc, sc * 0.8, sc); dummy.updateMatrix();
-      R.foodBlob.setMatrixAt(fb++, dummy.matrix);
+      R.foodBlob.setMatrixAt(fb, dummy.matrix);
+      R.foodBlob.setColorAt(fb, fcol);
+      fb++;
     }
   }
   R.foodBlob.count = fb;
-  R.foodGlow.instanceMatrix.needsUpdate = true; R.foodBlob.instanceMatrix.needsUpdate = true;
+  R.foodGlow.instanceMatrix.needsUpdate = true;
+  R.foodBlob.instanceMatrix.needsUpdate = true;
+  if (R.foodBlob.instanceColor) R.foodBlob.instanceColor.needsUpdate = true;
+
+  /* 食物吃完后的残迹（慢慢淡去） */
+  let si = 0;
+  for (const st of W.stains) {
+    if (si >= R.stainPool.length) break;
+    const [wx, wz] = px2world(st.x, st.y);
+    const slot = R.stainPool[si++];
+    const k = clamp(1 - st.t / CFG.food.stain, 0, 1);
+    slot.mesh.visible = true;
+    slot.mesh.position.set(wx, 0.6, wz);
+    slot.mesh.scale.set(st.r * 2.6, 1, st.r * 2.6);
+    slot.mat.opacity = 0.75 * k;
+  }
+  for (let i = si; i < R.stainPool.length; i++) R.stainPool[i].mesh.visible = false;
 
   /* 粘板 */
   let ti = 0;

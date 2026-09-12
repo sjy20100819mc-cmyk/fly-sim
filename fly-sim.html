@@ -170,7 +170,15 @@ const CFG = {
     alarmTau: 2.8, alarmDiff: 0.11,
     senseThresh: 0.035, visionRange: 96
   },
-  food: { r: 15, emit: 5.2, feedRate: 30, feedRange: 4, odorSens: 0.9 },
+  food: {
+    r: 15, emit: 5.2, feedRate: 22, feedRange: 4, odorSens: 0.9,
+    energy: 12000,     // 一块新鲜食物的总能量（被取食即消耗）
+    decay: 6,          // 自然变质损耗（能量/s）：无人吃也会慢慢消失
+    maxFeeders: 4,     // 同时"满速取食"的只数，人多了每只都变慢（拥挤效应）
+    consume: 1.0,      // 消耗系数：果蝇获得 1 能量 = 食物减少 consume
+    minR: 0.42,        // 吃剩最后一点时的视觉最小半径比例
+    stain: 22          // 吃完后残留痕迹的存留时间(s)
+  },
   trap: { w: 52, h: 34, emit: 2.3, learnR: 52, nearR: 74, avoidR: 90, avoidGain: 3.4, usR: 32, capture: 0.8, bounce: 0.35 },
   pher: { emit: 2.0, emitR: 20, interval: 0.28, emitDur: 20, escape: 0.03, drain: 2.2 },
   /* ---- 脑（LIF 网络）参数：与 flybench/Shiu2024 口径一致 ---- */
@@ -200,7 +208,7 @@ const CFG = {
     hungryAt: 62, desperateAt: 26,
     seekGain: 1.7, fermentGain: 1.2, alarmGain: 1.15,
     forgetTau: 40, memMax: 5,
-    reproChance: 0.16, reproCost: 30, reproEnergy: 102, feedNeed: 4, reproCool: 24,
+    reproChance: 0.12, reproCost: 50, reproEnergy: 108, feedNeed: 6, reproCool: 26,
     eggTime: 13, lifespan: 165, wallPad: 34, mutate: 0.10,
     /* 运动神经元 → 行为 的读出阈值 */
     walkGain: 1.0,     // MN_walk 放电率 → 速度
@@ -216,7 +224,7 @@ const CFG = {
 /* ----------------------------- 世界状态 ----------------------------- */
 const W = {
   w: 0, h: 0, cols: 0, rows: 0,
-  foods: [], traps: [], eggs: [], corpses: [], flies: [],
+  foods: [], traps: [], eggs: [], corpses: [], flies: [], stains: [],
   time: 0, deaths: 0, births: 0, deathsByCause: {},
   paused: false, showField: false, showBrain: false, mode: 'food',
   tipFly: null, tipSticky: false, follow: null, inspect: null, userZoom: false,
@@ -573,7 +581,7 @@ class Fly {
     const g = this.gene.brainGain;
     for (let e = 0; e < NET.E; e++) this.brain.w[e] *= g;    // 个体兴奋性差异（≈全局 gain 变异）
     this.energy = CFG.fly.eStart * rand(0.85, 1.0);
-    this.age = 0; this.eating = false; this.feedAcc = 0;
+    this.age = 0; this.eating = false; this.foodPatch = null; this.feedAcc = 0;
     this.state = 'cruise';
     this.speed = CFG.fly.cruise;
     this.wingPhase = rand(0, TAU);
@@ -601,11 +609,12 @@ class Fly {
     const oA = fFood.at(this.x, this.y);
     const oB = fFerm.at(this.x, this.y);
     const al = fAlarm.at(this.x, this.y);
-    let onFood = false;
+    let onFood = false, patch = null;
     for (const f of W.foods) {
-      if (Math.hypot(f.x - this.x, f.y - this.y) < CFG.food.r + CFG.food.feedRange) { onFood = true; break; }
+      if (Math.hypot(f.x - this.x, f.y - this.y) < CFG.food.r + CFG.food.feedRange) { onFood = true; patch = f; break; }
     }
     this.onFood = onFood;
+    this.foodPatch = patch;
     this.odSat = oA / (oA + 0.45);
     this.fermSat = oB / (oB + 0.45);
     this.alSat = al / (al + 0.75);
@@ -802,14 +811,22 @@ class Fly {
 
     /* ---------- 取食：MN_feed（MN9）放电率 > 阈值 → 喙伸展取食 ---------- */
     this.eating = false;
-    if (this.onFood) {
+    if (this.onFood && this.foodPatch && this.foodPatch.e > 0) {
       const feed = b.feedDrive();
       if (feed > F.feedThr) {
-        this.eating = true;
-        this.state = 'feed';
-        this.energy = Math.min(F.eMax, this.energy + CFG.food.feedRate * dt);
-        this.feedAcc = Math.min(F.feedNeed, this.feedAcc + dt);
-        this.dir += Math.sin(this.age * 6) * 1.2 * dt;
+        const patch = this.foodPatch;
+        const crowd = Math.min(1, CFG.food.maxFeeders / Math.max(1, patch.nFeeders || 1));  // 挤在一起就吃慢点
+        const er = clamp(patch.e / patch.e0, 0, 1);
+        let gain = CFG.food.feedRate * crowd * (0.35 + 0.65 * er) * dt;                     // 快见底时也吃得慢
+        gain = Math.min(gain, patch.e / Math.max(0.05, CFG.food.consume));                  // 不能超过剩余量
+        if (gain > 0) {
+          this.eating = true;
+          this.state = 'feed';
+          patch.e -= gain * CFG.food.consume;                                               // 吃掉的部分从食物里扣
+          this.energy = Math.min(F.eMax, this.energy + gain);
+          this.feedAcc = Math.min(F.feedNeed, this.feedAcc + dt);
+          this.dir += Math.sin(this.age * 6) * 1.2 * dt;
+        }
       }
     }
 
@@ -975,7 +992,8 @@ function place(x, y) {
   const m = W.mode;
   if (m === 'food') {
     if (W.foods.some(f => Math.hypot(f.x - x, f.y - y) < CFG.food.r * 1.6)) return false;
-    W.foods.push({ x, y, ph: rand(0, TAU) });
+    const e = CFG.food.energy * rand(0.85, 1.15);
+    W.foods.push({ x, y, ph: rand(0, TAU), e: e, e0: e, nFeeders: 0 });
     return true;
   }
   if (m === 'trap') {
@@ -1009,15 +1027,17 @@ function spawnFly(x, y, gene) {
   return f;
 }
 function resetWorld() {
-  W.foods = []; W.traps = []; W.eggs = []; W.corpses = []; W.flies = [];
+  W.foods = []; W.traps = []; W.eggs = []; W.corpses = []; W.flies = []; W.stains = [];
   W.deathsByCause = {};
   particles.length = 0;
   W.time = 0; W.deaths = 0; W.births = 0;
   buildFields();
   const n = Math.round(CFG.pop.start);
   for (let i = 0; i < n; i++) spawnFly(rand(40, W.w - 40), rand(40, W.h - 40));
-  W.foods.push({ x: W.w * 0.28, y: W.h * 0.35, ph: 0 });
-  W.foods.push({ x: W.w * 0.7, y: W.h * 0.68, ph: 1.7 });
+  for (const [fx, fy, ph] of [[0.28, 0.35, 0], [0.7, 0.68, 1.7]]) {
+    const e = CFG.food.energy * rand(0.9, 1.1);
+    W.foods.push({ x: W.w * fx, y: W.h * fy, ph: ph, e: e, e0: e, nFeeders: 0 });
+  }
 }
 
 /* ----------------------------- 主循环 ----------------------------- */
@@ -1040,7 +1060,29 @@ function frame(ts) {
 }
 function simulate(dt) {
   W.time += dt;
-  for (const f of W.foods) fFood.deposit(f.x, f.y, CFG.food.emit * dt, CFG.food.r * 1.3);
+  /* 每块食物统计同时取食的果蝇数（用上一帧的判定，平滑且够用） */
+  for (const f of W.foods) f.nFeeders = 0;
+  for (const fl of W.flies) if (!fl.dead && fl.onFood && fl.foodPatch && fl.foodPatch.e > 0) fl.foodPatch.nFeeders++;
+  /* 气味强度与体积一起随剩余量衰减；并做自然变质 */
+  for (let i = W.foods.length - 1; i >= 0; i--) {
+    const f = W.foods[i];
+    f.e -= CFG.food.decay * dt;
+    const er = clamp(f.e / f.e0, 0, 1);
+    fFood.deposit(f.x, f.y, CFG.food.emit * (0.25 + 0.75 * er) * dt, CFG.food.r * (0.7 + 0.6 * er));
+    if (f.e <= 0) {                                  // 吃光/变质完了 → 消失，留个残迹
+      W.stains.push({ x: f.x, y: f.y, t: 0, r: CFG.food.r * rand(0.8, 1.15), ph: rand(0, TAU) });
+      if (W.stains.length > 40) W.stains.shift();
+      sparks(f.x, f.y, [180, 150, 110], 7);
+      for (const fl of W.flies) if (fl.foodPatch === f) { fl.foodPatch = null; fl.onFood = false; }
+      W.foods.splice(i, 1);
+      if (W.foods.length === 0 && !W.noFoodHinted) {
+        W.noFoodHinted = true;
+        if (typeof hint === 'function') hint('食物被吃光了 — 点 🍎 放新的食物');
+      }
+    }
+  }
+  if (W.foods.length > 0) W.noFoodHinted = false;
+  for (let i = W.stains.length - 1; i >= 0; i--) { W.stains[i].t += dt; if (W.stains[i].t > CFG.food.stain) W.stains.splice(i, 1); }
   for (const t of W.traps) fFerm.deposit(t.x + CFG.trap.w / 2, t.y + CFG.trap.h / 2, CFG.trap.emit * dt, Math.max(CFG.trap.w, CFG.trap.h) * 0.8);
   for (const f of W.flies) if (f.state === 'trapped' && !f.dead) fAlarm.deposit(f.x, f.y, CFG.pher.emit * dt * 0.5, CFG.pher.emitR);
   fFood.step(dt); fFerm.step(dt); fAlarm.step(dt);
@@ -1111,10 +1153,21 @@ function render(dt) {
   }
 }
 
+function foodR(f) {                       // 食物视觉半径随剩余量缩小
+  const er = clamp((f.e === undefined ? 1 : f.e / (f.e0 || 1)), 0, 1);
+  return CFG.food.r * (CFG.food.minR + (1 - CFG.food.minR) * er);
+}
 function drawFood(ctx, f) {
-  const r = CFG.food.r;
+  const r = foodR(f);
+  const er = clamp((f.e === undefined ? 1 : f.e / (f.e0 || 1)), 0, 1);
   const g = ctx.createRadialGradient(f.x - r * 0.3, f.y - r * 0.3, 1, f.x, f.y, r);
-  g.addColorStop(0, '#ffd9a0'); g.addColorStop(0.55, '#e39b4e'); g.addColorStop(1, '#8a4b18');
+  const mixc = (a, b2) => a.map((v, i) => Math.round(v + (b2[i] - v) * (1 - er)));
+  const c0 = mixc([255, 217, 160], [170, 150, 120]);
+  const c1 = mixc([227, 155, 78], [120, 96, 70]);
+  const c2 = mixc([138, 75, 24], [70, 56, 44]);
+  g.addColorStop(0, `rgb(${c0.join(',')})`);
+  g.addColorStop(0.55, `rgb(${c1.join(',')})`);
+  g.addColorStop(1, `rgb(${c2.join(',')})`);
   ctx.save();
   ctx.shadowColor = 'rgba(255,170,80,0.5)'; ctx.shadowBlur = 16;
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, TAU); ctx.fill();
@@ -1418,12 +1471,15 @@ function uiTick(dt) {
   const learned = alive.filter(f => (f.peakAversion || 0) > 0.35).length;
   const avgE = alive.length ? alive.reduce((a, f) => a + f.energy, 0) / alive.length : 0;
   const brainRate = alive.length ? alive.reduce((a, f) => a + f.brain.popRateSlow, 0) / alive.length : 0;
+  const foodE = W.foods.reduce((a, f) => a + Math.max(0, f.e), 0);
+  const foodE0 = W.foods.reduce((a, f) => a + f.e0, 0) || 1;
   statsEl.innerHTML =
     `<div><span class="k">果蝇</span> <b class="ok">${alive.length}</b> <span class="k">/ 上限 ${CFG.pop.max}</span></div>` +
     `<div><span class="k">被粘住</span> <b class="bad">${stuck}</b>` +
     ` <span class="k">｜饥饿</span> <b class="hi">${hungry}</b>` +
     ` <span class="k">｜取食中</span> <b>${feeding}</b></div>` +
     `<div><span class="k">食物</span> <b>${W.foods.length}</b>` +
+    ` <span class="k">(剩 ${(foodE / foodE0 * 100).toFixed(0)}%)</span>` +
     ` <span class="k">｜粘板</span> <b>${W.traps.length}</b>` +
     ` <span class="k">｜卵</span> <b>${W.eggs.length}</b></div>` +
     `<div><span class="k">出生</span> <b>${W.births}</b> <span class="k">｜死亡</span> <b class="bad">${W.deaths}</b>` +
@@ -1459,6 +1515,10 @@ const PARAM_SPEC = [
   ['fly.hungryAt', '饥饿阈值 (能量)', 10, 120, 1],
   ['fly.desperateAt', '极饿阈值 (冒险)', 0, 80, 1],
   ['food.feedRate', '进食回复 (能量/s)', 0, 80, 1],
+  ['food.energy', '一块食物的总能量（吃光即消失）', 200, 20000, 100],
+  ['food.decay', '自然变质损耗 (能量/s)', 0, 60, 0.5],
+  ['food.maxFeeders', '同时满速取食的只数', 1, 20, 1],
+  ['food.consume', '消耗系数（1能量 : 吃掉的量）', 0.1, 3, 0.05],
   ['g', '嗅觉 / 信息素'],
   ['fly.seekGain', '食物气味吸引强度', 0, 4, 0.05],
   ['fly.fermentGain', '发酵气味吸引强度(粘板诱惑)', 0, 4, 0.05],
