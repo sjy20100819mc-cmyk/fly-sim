@@ -114,7 +114,8 @@ const W = {
   foods: [], traps: [], eggs: [], corpses: [], flies: [],
   time: 0, deaths: 0, births: 0, deathsByCause: {},
   paused: false, showField: false, showBrain: false, mode: 'food',
-  tipFly: null, tipSticky: false, follow: null, inspect: null, userZoom: false
+  tipFly: null, tipSticky: false, follow: null, inspect: null, userZoom: false,
+  followDist: 170, followEnter: 0
 };
 
 /* ----------------------------- 气味场 ----------------------------- */

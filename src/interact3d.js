@@ -1,60 +1,86 @@
 /* ----------------------------- 交互（3D 环绕 + 点选） -----------------------------
-   单指拖动 = 旋转视角 ｜ 双指捏合 = 缩放 ｜ 轻点地面 = 放置/清除 ｜ 轻点果蝇 = 追踪观察 */
+   单指拖动 = 旋转视角 ｜ 双指捏合 = 缩放 ｜ 轻点地面 = 放置/清除 ｜ 轻点果蝇 = 追踪观察
+   注意：位移一律用"该手指自己的上一次坐标"计算，且换指/增减手指时重置基准，
+   否则双指与单指切换的瞬间会用到别的手指坐标 → 视角瞬移。 */
 const tipEl = document.getElementById('tip');
 const MODE_CN = { cruise: '巡航', seek: '追踪气味', feed: '取食', cast: 'zig-zag 搜索', alarm: '惊逃/逃逸', trapped: '被粘住', dead: '死亡' };
 
 let pointers = new Map();
 let dragging = false, downP = null, pinch0 = 0, r0 = 0;
-const lastMove = { x: 0, y: 0 };
 
-(() => {                                   // ✕ 关闭按钮
+/* ✕ 关闭信息框 —— 同时退出追踪、回到整体视角 */
+function closeTipAndUnfollow() {
+  const wasFollow = !!W.follow;
+  hideTip();
+  if (wasFollow) { W.follow = null; W.userZoom = false; hint('已退出追踪'); }
+}
+(() => {
   const btn = document.getElementById('tipClose');
   if (!btn) return;
   btn.addEventListener('pointerdown', e => { e.stopPropagation(); });
-  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); hideTip(); });
+  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closeTipAndUnfollow(); });
 })();
+
+function pinchDist() {
+  const p = [...pointers.values()];
+  return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+}
+function applyZoom(nr) {
+  if (W.follow) W.followDist = clamp(nr, 55, 600);   // 跟随时改"跟随距离"，不被跟随逻辑拉回
+  else cam.r = nr;
+}
 
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (_) { }
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  lastMove.x = e.clientX; lastMove.y = e.clientY;
+  if (pointers.size >= 2) pointers.clear();          // 万一漏了 pointerup，避免残留指针
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY });
   if (pointers.size === 1) {
     dragging = false;
     downP = { x: e.clientX, y: e.clientY, t: performance.now() };
   } else if (pointers.size === 2) {
-    const p = [...pointers.values()];
-    pinch0 = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
-    r0 = cam.r;
+    pinch0 = pinchDist();
+    r0 = W.follow ? W.followDist : cam.r;
+    W.userZoom = true;                               // 一捏合就停掉自动取景，免得和自动缩放互相拉扯
+    dragging = true; downP = null;                   // 双指操作不算轻点
   }
   hideHint();
 }, { passive: true });
 
 cv.addEventListener('pointermove', e => {
-  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 2 && pinch0 > 0) {
-    const p = [...pointers.values()];
-    const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
-    cam.r = clamp(r0 * pinch0 / Math.max(d, 1), CAM_MIN, CAM_MAX);
-    W.userZoom = true; dragging = true;
+  const p = pointers.get(e.pointerId);
+  if (!p) return;                                    // 未知指针直接忽略
+  if (pointers.size >= 2) {
+    /* 双指捏合缩放 */
+    p.x = e.clientX; p.y = e.clientY;
+    const d = pinchDist();
+    if (pinch0 > 1 && d > 1) applyZoom(clamp(r0 * pinch0 / d, CAM_MIN, CAM_MAX));
   } else if (pointers.size === 1 && downP) {
-    const dx = e.clientX - lastMove.x, dy = e.clientY - lastMove.y;
+    /* 单指环绕：位移来自这根手指自己的轨迹 */
+    const dx = e.clientX - p.lx, dy = e.clientY - p.ly;
     if (!dragging && Math.hypot(e.clientX - downP.x, e.clientY - downP.y) > 7) dragging = true;
     if (dragging) {
-      cam.theta += dx * 0.007;         // 拖动方向 = 画面移动方向（"抓住世界"的手感）
+      cam.theta += dx * 0.007;                       // 拖动方向 = 画面移动方向（"抓住世界"的手感）
       cam.phi = clamp(cam.phi - dy * 0.007, 0.14, 1.45);
     }
-  } else if (!pointers.size) {
+    p.x = e.clientX; p.y = e.clientY;
+  } else if (pointers.size === 0) {
     /* 悬停（桌面/Apple Pencil）：显示果蝇状态 */
     const f = pickFly(e.clientX, e.clientY);
     if (f) { W.inspect = f; if (!W.tipSticky) showTipAt(f, e.clientX, e.clientY, false); }
     else if (!W.tipSticky) hideTip();
   }
-  lastMove.x = e.clientX; lastMove.y = e.clientY;
+  p.lx = e.clientX; p.ly = e.clientY;                // 记录"这根手指"的位置
 }, { passive: true });
 
 function endPointer(e) {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch0 = 0;
+  if (pointers.size === 1) {
+    /* 双指变单指：剩下这根当作刚按下继续拖动，基准重置 → 不会瞬移 */
+    const rest = [...pointers.values()][0];
+    rest.lx = rest.x; rest.ly = rest.y;
+    dragging = true; downP = null;
+  }
   if (pointers.size === 0 && downP) {
     const dt = performance.now() - downP.t;
     if (!dragging && dt < 420) tapAt(e.clientX, e.clientY);
@@ -65,7 +91,8 @@ cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
 cv.addEventListener('wheel', e => {
   e.preventDefault();
-  cam.r = clamp(cam.r * (1 + e.deltaY * 0.0012), CAM_MIN, CAM_MAX);
+  const f = 1 + e.deltaY * 0.0012;
+  applyZoom(clamp((W.follow ? W.followDist : cam.r) * f, CAM_MIN, CAM_MAX));
   W.userZoom = true;
 }, { passive: false });
 
@@ -74,6 +101,7 @@ function tapAt(cx, cy) {
   if (f) {
     if (W.mode === 'erase') { f.onTrap = null; f.die('removed'); sparks(f.x, f.y, [255, 140, 160], 6); return; }
     W.inspect = f; W.follow = f; W.userZoom = true;
+    W.followDist = 170; W.followEnter = 1.3;         // 平滑推到观察距离/俯角
     showTipAt(f, cx, cy, true);
     hint(`追踪果蝇 #${f.id}（轻点空地取消追踪）`);
     return;
@@ -82,7 +110,7 @@ function tapAt(cx, cy) {
   if (!s) return;
   if (W.mode === 'erase') { if (place(s.x, s.y)) sparks(s.x, s.y, [200, 220, 255], 5); return; }
   hideTip();
-  if (W.follow) { W.follow = null; W.userZoom = false; }
+  if (W.follow) { W.follow = null; W.userZoom = false; }   // 退出追踪并回到整体视角
   if (place(s.x, s.y)) {
     if (W.mode === 'food') sparks(s.x, s.y, [255, 200, 120], 8);
     else if (W.mode === 'fly') sparks(s.x, s.y, [150, 200, 255], 8);
@@ -153,7 +181,7 @@ function toggleFollow() {
   if (W.follow) { W.follow = null; W.userZoom = false; hint('自由环绕视角'); }
   else {
     const f = W.inspect || inspectedFly();
-    if (f) { W.follow = f; W.userZoom = true; W.inspect = f; hint(`追踪果蝇 #${f.id}`); }
+    if (f) { W.follow = f; W.userZoom = true; W.inspect = f; W.followDist = 170; W.followEnter = 1.3; hint(`追踪果蝇 #${f.id}`); }
   }
 }
 function toggleTopView() {

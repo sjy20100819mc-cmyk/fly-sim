@@ -251,15 +251,19 @@ function resizeGL() {
   if (!W.userZoom) cam.r = fitRadius();
 }
 function updateCamera(dt) {
-  if (W.follow && W.follow.dead) W.follow = null;
+  if (W.follow && W.follow.dead) { W.follow = null; W.userZoom = false; }
   if (W.follow) {
     const [wx, wz] = px2world(W.follow.x, W.follow.y);
     cam.tTarget.set(wx, 3, wz);
-    cam.r += (170 - cam.r) * clamp(dt * 2.2, 0, 1);
-    cam.phi += (1.05 - cam.phi) * clamp(dt * 2.2, 0, 1);
+    W.followDist = clamp(W.followDist || 170, 55, 600);
+    cam.r += (W.followDist - cam.r) * clamp(dt * 2.6, 0, 1);   // 半径追随 followDist（捏合改的就是它）
+    if (W.followEnter > 0) {                                    // 刚进入跟随时平滑推到观察俯角，之后不再干预
+      cam.phi += (1.02 - cam.phi) * clamp(dt * 2.2, 0, 1);
+      W.followEnter = Math.max(0, W.followEnter - dt);
+    }
   } else {
     cam.tTarget.set(0, 0, 0);
-    if (W.userZoom) cam.r += 0; else cam.r += (fitRadius() - cam.r) * clamp(dt * 1.5, 0, 1);
+    if (!W.userZoom) cam.r += (fitRadius() - cam.r) * clamp(dt * 1.5, 0, 1);
   }
   cam.target.lerp(cam.tTarget, clamp(dt * 3.2, 0, 1));
   if (scene.fog) { scene.fog.near = cam.r * 1.18; scene.fog.far = cam.r * 3.0; }
