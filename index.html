@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#070b10">
-<title>果蝇 3D 模拟器 · FlyWire FAFB v783 连接组约简脉冲脑</title>
+<title>果蝇 3D 模拟器 · FlyEM 雄性 CNS v1.0 实测连接组</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;overflow:hidden;background:#070b10;
@@ -113,8 +113,9 @@
   <div id="sliders"></div>
   <hr>
   <div class="mini">
-    <b>行为内核</b>：每只果蝇一副 71 神经元的 LIF 脉冲网络，细胞类型取自 FlyWire FAFB v783 注释，
-    w_syn=0.275、全局 gain≈0.42、≥5 突触才建边（与 flybench / Shiu 2024 口径一致），
+    <b>行为内核</b>：每只果蝇一副 48 神经元的 LIF 脉冲网络 —— 接线来自 <b>FlyEM 雄性 CNS v1.0</b>
+    (2026-09，165,122 个真实神经元 / 25,568,639 条突触) 的细胞类型级聚合，≥5 突触才建边；
+    145 条边中 119 条为实测、26 条标注为推断。
     含放电频率适应与多巴胺门控可塑性；中枢脑（MB 蘑菇体 / LH 侧角 / CX 中央复合体 / SEZ）决定动机与价值，
     导航反射由 VNC 局部回路补全。<b>3D 层</b>用 three.js 实例化渲染，气味以叠加云层显示。<br><br>
     操作：拖动旋转 · 双指缩放 · 轻点地面放置 · 轻点果蝇追踪观察<br>
