@@ -15,8 +15,6 @@ js = (src[:src.index(MR)]
       + src[src.index(MS):])
 
 reps = [
-("  paused: false, showField: false, showBrain: false, mode: 'food'\n};",
- "  paused: false, showField: false, showBrain: false, mode: 'food',\n  follow: null, inspect: null, userZoom: false\n};"),
 ("resize();\nbuildSliders();", "buildFields();\ninitGL();\nbuildSliders();"),
 ("""  btnPause.textContent = W.paused ? '▶ 继续' : '⏸ 暂停';
   btnPause.classList.toggle('on', W.paused);""",
@@ -55,3 +53,11 @@ open('/var/minis/workspace/fly-sim-3d.html', 'w').write(out)
 print('组装完成: fly-sim-3d.html  %.0f KB' % (len(out.encode()) / 1024))
 PYEOF
 node --check fly3d.js && echo "语法检查通过"
+
+# 2D 版（同一套脉冲脑 + Canvas 渲染）
+python3 - <<'PY2'
+h = open('head2.html').read().replace('</body>\n</html>\n', '')
+j = open('brain.js').read()
+open('/var/minis/workspace/fly-sim.html', 'w').write(h + '\n<script>\n' + j + '\n</script>\n</body>\n</html>\n')
+print('重组装: fly-sim.html  %.0f KB' % (len((h + j).encode()) / 1024))
+PY2

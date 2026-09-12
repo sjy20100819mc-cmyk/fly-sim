@@ -113,7 +113,8 @@ const W = {
   w: 0, h: 0, cols: 0, rows: 0,
   foods: [], traps: [], eggs: [], corpses: [], flies: [],
   time: 0, deaths: 0, births: 0, deathsByCause: {},
-  paused: false, showField: false, showBrain: false, mode: 'food'
+  paused: false, showField: false, showBrain: false, mode: 'food',
+  tipFly: null, tipSticky: false, follow: null, inspect: null, userZoom: false
 };
 
 /* ----------------------------- 气味场 ----------------------------- */
@@ -926,6 +927,7 @@ function frame(ts) {
   if (!W.paused) simulate(dt);
   render(dt);
   if (W.showBrain) drawBrainPanel();
+  if (typeof updateTip === 'function') updateTip();
   probeAcc += dt;
   if (probeAcc > 2) { probeAcc = 0; probeRes = reflexProbe(); }
   uiTick(dt);
@@ -1476,7 +1478,18 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
   down = true;
   const p = pos(e); lastP = p;
+  const hitF = (() => {                       // 轻点必须精确（16px），避免挡住放置
+    let best = null, bd = 16;
+    for (const f of W.flies) { if (f.dead) continue;
+      const d = Math.hypot(f.x - p.x, f.y - p.y); if (d < bd) { bd = d; best = f; } }
+    return best;
+  })();
+  if (hitF) {
+    W.inspect = hitF; W.tipSticky = true; showTipAt(hitF, p.x, p.y, true); down = false;
+    hideHint(); return;
+  }
   if (place(p.x, p.y) && W.mode === 'food') sparks(p.x, p.y, [255, 200, 120], 6);
+  else if (W.tipSticky) hideTip();
   hideHint();
 });
 cv.addEventListener('pointermove', e => {
@@ -1486,13 +1499,15 @@ cv.addEventListener('pointermove', e => {
   } else {
     const f = nearestFly(p.x, p.y);
     W.inspect = f;
-    if (f) showTipAt(f, e.clientX, e.clientY); else hideTip();
+    if (f) { if (!W.tipSticky) showTipAt(f, e.clientX, e.clientY, false); }
+    else if (!W.tipSticky) hideTip();
   }
 });
 window.addEventListener('pointerup', () => { down = false; });
-cv.addEventListener('pointerleave', () => { down = false; W.inspect = null; hideTip(); });
+cv.addEventListener('pointerleave', () => { down = false; if (!W.tipSticky) { W.inspect = null; hideTip(); } });
 
 const tipEl = document.getElementById('tip');
+const tipBody = document.getElementById('tipBody');
 function nearestFly(x, y) {
   let best = null, bd = 24;
   for (const f of W.flies) {
@@ -1504,29 +1519,54 @@ function nearestFly(x, y) {
 }
 const MODE_CN = { cruise: '巡航', seek: '追踪气味', feed: '取食', cast: 'zig-zag 搜索', alarm: '惊逃/逃逸', trapped: '被粘住', dead: '死亡' };
 let escapeCount = 0, escapeWindow = 0;
-function showTipAt(f, cx, cy) {
+function showTipAt(f, cx, cy, sticky) {
+  if (!tipEl || !tipBody) return;
+  if (sticky) W.tipSticky = true;
+  W.tipFly = f;
+  tipEl.style.left = clamp(cx + 14, 6, window.innerWidth - 236) + 'px';
+  tipEl.style.top = clamp(cy + 14, 46, window.innerHeight - 152) + 'px';
+  renderTipBody(f);
+  tipEl.style.display = 'block';
+}
+function renderTipBody(f) {
   const hunger = clamp(1 - f.energy / CFG.fly.hungryAt, 0, 1);
   const top = f.brain.topTypes(4).filter(t => t[1] > 0.5);
   const notes = [];
   if (f.energy < CFG.fly.desperateAt) notes.push('极饿：Hugin 抑制 MBON_av，冒险觅食');
-  else if (hunger > 0.4) notes.push('Hugin（SEZ）饥饿驱动↑');
+  else if (hunger > 0.4) notes.push('Hugin(SEZ) 饥饿驱动↑');
   if (f.fermSat > 0.3) notes.push('AL 闻到发酵气味');
   if (f.odSat > 0.3) notes.push('AL 闻到食物气味');
   if ((f.peakAversion || 0) > 0.35) notes.push('MB 记忆已写入：回避粘板');
-  if (f.alSat > 0.3) notes.push('报警信息素 → 回避 + 逃逸通路');
+  if (f.alSat > 0.3) notes.push('报警信息素 → 回避＋逃逸');
   if (f.brain.rate('DAN_PPL1') > 1) notes.push('PPL1 多巴胺：惩罚信号发放中');
-  tipEl.innerHTML =
-    `<b>果蝇 #${f.id}</b> · ${MODE_CN[f.state] || f.state}<br>` +
+  tipBody.innerHTML =
+    `<b>果蝇 #${f.id}</b> · ${MODE_CN[f.state] || f.state}` +
+    (W.follow === f ? ' <span style="color:#6fd8a8">· 追踪中</span>' : '') + '<br>' +
     `能量 ${f.energy.toFixed(0)}/${CFG.fly.eMax} · 饥饿 ${(hunger * 100).toFixed(0)}% · 年龄 ${f.age.toFixed(1)}s<br>` +
-    `脑：${f.brain.popRateSlow.toFixed(2)} Hz ｜ MBON_av 权重 ×${f.brain.learnIndex().toFixed(2)}<br>` +
-    `读出 MN9 ${f.brain.rate('MN_feed').toFixed(1)}Hz · MN_walk ${f.brain.rate('MN_walk').toFixed(1)}Hz · GF ${f.brain.rate('DN_escape').toFixed(1)}Hz<br>` +
+    `脑 ${f.brain.popRateSlow.toFixed(2)}Hz ｜ MBON_av 权重 ×${f.brain.learnIndex().toFixed(2)}<br>` +
+    `读出 MN9 ${f.brain.rate('MN_feed').toFixed(1)} · MN_walk ${f.brain.rate('MN_walk').toFixed(1)} · GF ${f.brain.rate('DN_escape').toFixed(1)} Hz<br>` +
     (top.length ? `<span style="color:#9fe8c8">活跃：${top.map(t => t[0] + ' ' + t[1].toFixed(0) + 'Hz').join('、')}</span><br>` : '') +
     (notes.length ? `<span style="color:#ffd479">${notes.join('；')}</span>` : '');
-  tipEl.style.display = 'block';
-  tipEl.style.left = clamp(cx + 14, 6, window.innerWidth - 224) + 'px';
-  tipEl.style.top = clamp(cy + 14, 46, window.innerHeight - 130) + 'px';
 }
-function hideTip() { tipEl.style.display = 'none'; }
+function hideTip() {
+  if (tipEl) tipEl.style.display = 'none';
+  W.tipSticky = false; W.tipFly = null;
+}
+let _tipT = 0;
+function updateTip() {                       // 每帧调用：内容实时刷新，果蝇死亡自动关闭
+  if (!tipEl || !W.tipFly || tipEl.style.display === 'none') return;
+  if (W.tipFly.dead || W.flies.indexOf(W.tipFly) < 0) { hideTip(); return; }
+  const now = performance.now();
+  if (now - _tipT < 300) return;
+  _tipT = now;
+  renderTipBody(W.tipFly);
+}
+(() => {
+  const btn = document.getElementById('tipClose');
+  if (!btn) return;
+  btn.addEventListener('pointerdown', e => { e.stopPropagation(); });
+  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); hideTip(); });
+})();
 let hintHidden = false;
 function hint(t) {
   const el = document.getElementById('hint');

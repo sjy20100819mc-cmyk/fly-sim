@@ -53,10 +53,13 @@
   .mini{font-size:10.5px;color:#67788a;line-height:1.55;margin:8px 0 2px}
   hr{border:0;border-top:1px solid #1b2632;margin:10px 0}
 
-  #tip{position:absolute;z-index:7;pointer-events:none;background:#0b1117f2;border:1px solid #2b3a48;
-    border-radius:9px;padding:6px 8px;font-size:10.5px;line-height:1.55;color:#cfdae4;display:none;
-    max-width:220px}
-  #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;z-index:4;font-size:11px;
+  #tip{position:absolute;z-index:7;pointer-events:auto;background:#0b1117f5;border:1px solid #2b3a48;
+    border-radius:10px;padding:7px 9px;font-size:10.5px;line-height:1.55;color:#cfdae4;display:none;
+    max-width:224px;backdrop-filter:blur(5px);box-shadow:0 6px 22px #000a}
+  #tipClose{position:absolute;top:-9px;right:-9px;width:28px;height:28px;padding:0;border-radius:50%;
+    background:#22303d;border:1px solid #46617a;color:#d6e6f4;font-size:14px;line-height:1;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px #000b}
+  #tipClose:active{background:#33485b;transform:scale(.92)}
     color:#5f7284;text-align:center;pointer-events:none;transition:opacity .6s;opacity:.85;max-width:88vw}
   body.brainon #hint{display:none}
 </style>
@@ -96,7 +99,7 @@
     快捷键：1食物 2粘板 3投蝇 4清除 · B脑活动 · D气味场 · 空格暂停 · R重置
   </div>
 </aside>
-<div id="tip"></div>
+<div id="tip"><button id="tipClose" title="关闭">✕</button><div id="tipBody"></div></div>
 <div id="hint">放置食物与粘板，观察果蝇自主决策（“脑活动”可看它此刻在想什么）</div>
 </body>
 </html>
